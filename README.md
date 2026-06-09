@@ -286,27 +286,54 @@ Check: `curl -sI http://127.0.0.1:8000/login` returns `200 OK`.
 
 ---
 
-## 7. Burgan: Apache vhost + Let's Encrypt wildcard cert
+## 7. Burgan: Apache vhost + Let's Encrypt SAN cert
 
-A wildcard cert covers all three subdomains from one file. It requires
-**DNS-01 validation** (you'll need a DNS API plugin or a one-shot
-manual TXT record).
+A single SAN cert covering the three exact names (apex + fox + solis)
+is cleaner than a wildcard: HTTP-01 issuance + renewal need only that
+Apache serves `/.well-known/acme-challenge/` on port 80, with no DNS
+gymnastics. The bundled vhost has the renewal-friendly :80 redirect
+already wired up.
+
+Install the vhost file — but **don't enable it yet**, because the
+SSL cert it points at doesn't exist on burgan yet:
 
 ```bash
 sudo cp /opt/burgan-portal/apache/smartenergylab.conf \
         /etc/apache2/sites-available/
-sudo a2ensite smartenergylab.conf
+```
 
-# Get the wildcard cert (manual DNS-01; certbot will prompt you to
-# create a single _acme-challenge.smartenergylab.software TXT record).
-sudo certbot certonly --manual --preferred-challenges=dns \
+Make sure something is serving port 80 in the meantime so HTTP-01
+can land. Debian's default site is fine:
+
+```bash
+sudo a2ensite 000-default 2>/dev/null || true
+sudo systemctl restart apache2
+```
+
+Issue the cert (one cert, three SANs, HTTP-01 via the default
+webroot):
+
+```bash
+sudo certbot certonly --webroot -w /var/www/html \
     -d smartenergylab.software \
-    -d '*.smartenergylab.software' \
+    -d fox.smartenergylab.software \
+    -d solis.smartenergylab.software \
     --agree-tos --no-eff-email -m you@example.com
+```
 
+Verify the cert landed, then enable our vhost:
+
+```bash
+sudo ls /etc/letsencrypt/live/smartenergylab.software/
+sudo a2ensite smartenergylab.conf
 sudo apache2ctl configtest
 sudo systemctl reload apache2
 ```
+
+Renewal is automatic: certbot installs a systemd timer that runs
+`certbot renew` twice a day. The :80 vhost blocks in
+`smartenergylab.conf` carve out `/.well-known/acme-challenge/` so
+HTTP-01 keeps working forever without touching anything by hand.
 
 Check:
 
