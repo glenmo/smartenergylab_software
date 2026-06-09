@@ -40,14 +40,18 @@ SQLALCHEMY_DATABASE_URI = "sqlite:////var/lib/burgan-portal/portal.sqlite"
 # Keys are bare hostnames; the public DNS pattern is
 # <key>.smartenergylab.software.
 # ---------------------------------------------------------------------------
-# Note: port 80 hits Apache on the LAN side, which then reverse-proxies
-# to its local Flask (fox-monitor / microgrid). Hitting Apache instead
-# of Flask directly preserves the upstream's existing /api/* cache
-# headers, legacy URL blocking, etc. Override to :5000 if you want to
-# bypass Apache for some reason.
+# How to read this:
+#   - desky's fox_remote_monitoring sits behind Apache: burgan hits :80
+#     and Apache reverse-proxies to Flask on 127.0.0.1:5000. Apache's
+#     vhost needs to recognise the WireGuard IP as a ServerAlias (set
+#     via EXTRA_SERVER_ALIAS on the fox installer — see README step 4).
+#   - rubberduck's microgrid_remote_monitor binds Flask straight to the
+#     LAN interface — no Apache reverse proxy. Burgan hits :5000
+#     directly. Verify Flask is bound to 0.0.0.0 (or to the wg0 IP) on
+#     rubberduck, otherwise the tunnel won't reach it.
 UPSTREAMS = {
-    "fox":   "http://10.99.0.2",
-    "solis": "http://10.99.0.3",
+    "fox":   "http://10.99.0.2",        # → Apache on desky → fox-monitor:5000
+    "solis": "http://10.99.0.3:5000",   # → Flask directly on rubberduck
 }
 
 # ---------------------------------------------------------------------------

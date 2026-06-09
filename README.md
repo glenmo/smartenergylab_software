@@ -125,38 +125,65 @@ from app import app; print(app.config["UPSTREAMS"])
 
 ## 4. Let burgan reach the inverter dashboards over the tunnel
 
-Burgan's portal hits the **Apache vhost** on each LAN host (port 80),
-not Flask directly. Apache already binds to `0.0.0.0:80`, so it
-listens on the WireGuard interface automatically — but its vhost
-matching needs to recognise the tunnel IP.
+The two upstreams have different deployment shapes and need different
+treatment.
 
-On **desky**, add the tunnel IP as a `ServerAlias` so Apache routes
-WireGuard-side requests to the fox-monitor vhost explicitly:
+### 4a. desky — Apache vhost on `:80` in front of Flask
+
+`fox_remote_monitoring` puts Apache in front of Flask. Burgan hits
+`http://10.99.0.2/` (port 80, Apache), Apache reverse-proxies to
+Flask on `127.0.0.1:5000`. Apache already binds to `0.0.0.0:80`, so
+it's already listening on the WireGuard interface — but vhost matching
+needs the WireGuard IP in `ServerAlias`, otherwise it falls back to
+"first vhost wins". Re-run the fox installer with `EXTRA_SERVER_ALIAS`
+to rewrite the vhost cleanly:
 
 ```bash
-# Re-run the installer with EXTRA_SERVER_ALIAS — it rewrites the vhost.
+ssh you@desky
 cd /home/glen/fox_remote_monitoring
 EXTRA_SERVER_ALIAS="10.99.0.2" bash install.sh
 ```
 
-Or, if you'd rather edit by hand:
+Or do the same change by hand if you'd rather not re-run the script:
 
 ```bash
-sudo sed -i 's|ServerAlias 192.168.55.93|ServerAlias 192.168.55.93 10.99.0.2|' \
+sudo sed -i 's|ServerAlias \(.*\)|ServerAlias \1 10.99.0.2|' \
     /etc/apache2/sites-available/fox-monitor.conf
 sudo systemctl reload apache2
 ```
 
-Do the same on **rubberduck** using `10.99.0.3`. Verify (from burgan,
-after WireGuard is up — step 5):
+Flask itself stays bound to `127.0.0.1` — no extra LAN exposure.
+
+### 4b. rubberduck — Flask bound directly to the LAN, no Apache vhost
+
+`microgrid_remote_monitor` doesn't run behind Apache. Flask is
+exposed directly on port 5000, and burgan's `UPSTREAMS["solis"]`
+points at `http://10.99.0.3:5000` accordingly. The only requirement
+is that microgrid's Flask is bound to **all interfaces** so the
+WireGuard tunnel actually reaches it.
+
+Check what microgrid is bound to:
 
 ```bash
-curl -sI http://10.99.0.2/   # 200 OK from fox-monitor vhost on desky
-curl -sI http://10.99.0.3/   # 200 OK from microgrid vhost on rubberduck
+ssh you@rubberduck
+sudo ss -tlnp | grep ':5000'
 ```
 
-Flask itself stays bound to `127.0.0.1` — no change needed there,
-no extra LAN exposure of the raw Flask port.
+- `0.0.0.0:5000` → fine, it'll answer on the wg0 interface automatically.
+- `127.0.0.1:5000` → won't answer over the tunnel. Edit microgrid's
+  systemd unit (likely `/etc/systemd/system/microgrid-monitor.service`)
+  and change `--host 127.0.0.1` to `--host 0.0.0.0`, then
+  `sudo systemctl daemon-reload && sudo systemctl restart microgrid-monitor`.
+
+### Verification (from burgan, after WireGuard is up — step 5)
+
+```bash
+curl -sI http://10.99.0.2/             # 200 OK from desky's Apache
+curl -sI http://10.99.0.3:5000/        # 200 OK from microgrid Flask
+```
+
+If either curl hangs or times out, the tunnel isn't carrying packets
+to that host yet — work through step 5 again.
 
 ---
 
