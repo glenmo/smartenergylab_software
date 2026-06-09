@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Smart Energy Lab{% endblock %}
+{% block content %}
+<div class="card auth-card">
+    <h1>Sign in</h1>
+    <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+        <label>
+            <span>Email</span>
+            {{ form.email(autofocus=true, autocomplete="username", spellcheck="false") }}
+            {% for e in form.email.errors %}<em class="err">{{ e }}</em>{% endfor %}
+        </label>
+        <label>
+            <span>Password</span>
+            {{ form.password(autocomplete="current-password") }}
+            {% for e in form.password.errors %}<em class="err">{{ e }}</em>{% endfor %}
+        </label>
+        <button type="submit" class="btn-primary">Sign in</button>
+    </form>
+    <p class="muted">
+        <a href="{{ url_for('auth.forgot') }}">Forgot password?</a>
+    </p>
+</div>
+{% endblock %}

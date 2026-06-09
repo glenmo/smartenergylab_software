@@ -1,0 +1,73 @@
+"""
+Configuration template for smartenergylab_software portal.
+
+Deployment: copy to /etc/burgan-portal/config.py on burgan and fill in
+the real values. The systemd unit reads config via PORTAL_CONFIG=
+pointing at this file.
+
+NEVER commit a real config.py — the .gitignore excludes it.
+"""
+
+# ---------------------------------------------------------------------------
+# Flask
+# ---------------------------------------------------------------------------
+# Long random string — generate with:  python -c 'import secrets; print(secrets.token_hex(32))'
+SECRET_KEY = "REPLACE_WITH_64_CHAR_HEX"
+
+# Domain the session cookie is scoped to — must start with a dot so all
+# subdomains (fox./solis./portal) share the session.
+SESSION_COOKIE_DOMAIN = ".smartenergylab.software"
+SESSION_COOKIE_SECURE = True        # set False only for local HTTP testing
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+PERMANENT_SESSION_LIFETIME = 60 * 60 * 24 * 14   # 14 days
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
+SQLALCHEMY_DATABASE_URI = "sqlite:////var/lib/burgan-portal/portal.sqlite"
+
+# ---------------------------------------------------------------------------
+# Subdomain → upstream map
+# Apache forwards every request to Flask with the original Host: header
+# intact. Flask reads request.host and looks up the upstream URL here.
+#
+# Upstream IPs are WireGuard tunnel addresses on the wg0 interface:
+#   10.99.0.1 = burgan       (server)
+#   10.99.0.2 = desky        (fox-monitor)
+#   10.99.0.3 = rubberduck   (microgrid_remote_monitor / solis)
+#
+# Keys are bare hostnames; the public DNS pattern is
+# <key>.smartenergylab.software.
+# ---------------------------------------------------------------------------
+# Note: port 80 hits Apache on the LAN side, which then reverse-proxies
+# to its local Flask (fox-monitor / microgrid). Hitting Apache instead
+# of Flask directly preserves the upstream's existing /api/* cache
+# headers, legacy URL blocking, etc. Override to :5000 if you want to
+# bypass Apache for some reason.
+UPSTREAMS = {
+    "fox":   "http://10.99.0.2",
+    "solis": "http://10.99.0.3",
+}
+
+# ---------------------------------------------------------------------------
+# SMTP — Gmail with an app password
+# Create at: https://myaccount.google.com/apppasswords
+# ---------------------------------------------------------------------------
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 587                       # STARTTLS
+SMTP_USER = "you@example.com"         # the Gmail address that owns the app password
+SMTP_PASSWORD = "REPLACE_APP_PW"      # 16-char Google app password (NOT your normal pw)
+MAIL_FROM = "Smart Energy Lab <you@example.com>"
+
+# Base URL used in password-reset emails (must be HTTPS in prod)
+PORTAL_BASE_URL = "https://smartenergylab.software"
+
+# ---------------------------------------------------------------------------
+# Rate limits (Flask-Limiter syntax)
+# ---------------------------------------------------------------------------
+RATE_LIMIT_LOGIN  = "5 per 15 minutes"
+RATE_LIMIT_FORGOT = "3 per hour"
+
+# How long a password-reset token is valid for
+RESET_TOKEN_TTL_SECONDS = 60 * 60     # 1 hour

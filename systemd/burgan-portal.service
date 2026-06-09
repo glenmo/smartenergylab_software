@@ -1,0 +1,45 @@
+# /etc/systemd/system/burgan-portal.service
+#
+# Smart Energy Lab portal — Flask app under gunicorn.
+#
+# Apache listens on :443 and reverse-proxies all three vhosts
+# (smartenergylab.software, fox., solis.) to this gunicorn on
+# 127.0.0.1:8000.
+
+[Unit]
+Description=Smart Energy Lab portal (gunicorn + Flask)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=burgan-portal
+Group=burgan-portal
+WorkingDirectory=/opt/burgan-portal
+
+# Config file path is read by app.py via os.environ.
+Environment="PORTAL_CONFIG=/etc/burgan-portal/config.py"
+
+ExecStart=/opt/burgan-portal/venv/bin/gunicorn \
+    --workers 2 \
+    --bind 127.0.0.1:8000 \
+    --access-logfile - \
+    --error-logfile - \
+    --timeout 120 \
+    app:app
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+# Allow writing only to the SQLite DB dir.
+ReadWritePaths=/var/lib/burgan-portal
+
+[Install]
+WantedBy=multi-user.target

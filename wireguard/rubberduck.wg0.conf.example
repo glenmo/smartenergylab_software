@@ -1,0 +1,14 @@
+# /etc/wireguard/wg0.conf  —  rubberduck.local side (microgrid / Solis host)
+#
+# Generate keys on rubberduck:
+#     umask 077 && wg genkey | tee rubberduck.key | wg pubkey > rubberduck.pub
+
+[Interface]
+Address    = 10.99.0.3/24
+PrivateKey = REPLACE_WITH_rubberduck.key_CONTENTS
+
+[Peer]
+PublicKey            = REPLACE_WITH_burgan.pub_CONTENTS
+Endpoint             = burgan.arachnoid.net.au:51820
+AllowedIPs           = 10.99.0.0/24
+PersistentKeepalive  = 25

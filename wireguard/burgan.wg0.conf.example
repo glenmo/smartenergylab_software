@@ -1,0 +1,31 @@
+# /etc/wireguard/wg0.conf  —  burgan side (server)
+#
+# Generate keys on burgan with:
+#     umask 077 && wg genkey | tee burgan.key | wg pubkey > burgan.pub
+# Then paste the contents of burgan.key into PrivateKey below, and
+# add each peer's PUBLIC key (generated on its own host) under its
+# [Peer] block.
+
+[Interface]
+# Burgan's tunnel address — picked the 10.99.0.0/24 range so it
+# doesn't collide with anything on the residential LAN.
+Address     = 10.99.0.1/24
+ListenPort  = 51820
+PrivateKey  = REPLACE_WITH_burgan.key_CONTENTS
+
+# Optional: forward kernel-routed traffic. Not needed for inbound-only
+# proxying (which is what we're doing here), so left commented.
+# PostUp   = iptables -A FORWARD -i %i -j ACCEPT ; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+# PostDown = iptables -D FORWARD -i %i -j ACCEPT ; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+# --- Peer: desky.local (Fox monitor host) -----------------------------
+[Peer]
+PublicKey  = REPLACE_WITH_desky.pub_CONTENTS
+AllowedIPs = 10.99.0.2/32
+# Burgan doesn't need to dial desky outbound (desky initiates), so no
+# Endpoint here. PersistentKeepalive is set on the client side.
+
+# --- Peer: rubberduck.local (microgrid / Solis host) ------------------
+[Peer]
+PublicKey  = REPLACE_WITH_rubberduck.pub_CONTENTS
+AllowedIPs = 10.99.0.3/32

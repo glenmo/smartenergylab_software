@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Set new password · Smart Energy Lab{% endblock %}
+{% block content %}
+<div class="card auth-card">
+    <h1>Set a new password</h1>
+    <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+        <label>
+            <span>New password</span>
+            {{ form.password(autofocus=true, autocomplete="new-password") }}
+            {% for e in form.password.errors %}<em class="err">{{ e }}</em>{% endfor %}
+        </label>
+        <label>
+            <span>Confirm new password</span>
+            {{ form.confirm(autocomplete="new-password") }}
+            {% for e in form.confirm.errors %}<em class="err">{{ e }}</em>{% endfor %}
+        </label>
+        <button type="submit" class="btn-primary">Update password</button>
+    </form>
+</div>
+{% endblock %}

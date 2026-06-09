@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Monitored systems · Smart Energy Lab{% endblock %}
+{% block content %}
+<div class="hero">
+    <h1>Monitored systems</h1>
+    <p class="muted">Pick a system to open its live dashboard.</p>
+</div>
+
+<div class="system-grid">
+    {% for s in systems %}
+    <a href="{{ s.url }}" class="system-card" style="--accent: {{ s.accent }};">
+        <div class="system-accent"></div>
+        <h2>{{ s.name }}</h2>
+        <p>{{ s.blurb }}</p>
+        <span class="system-cta">Open dashboard →</span>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

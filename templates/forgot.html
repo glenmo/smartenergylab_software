@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Reset password · Smart Energy Lab{% endblock %}
+{% block content %}
+<div class="card auth-card">
+    <h1>Reset your password</h1>
+    <p class="muted">
+        Enter your email and we'll send a link to set a new password.
+    </p>
+    <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+        <label>
+            <span>Email</span>
+            {{ form.email(autofocus=true, autocomplete="username") }}
+            {% for e in form.email.errors %}<em class="err">{{ e }}</em>{% endfor %}
+        </label>
+        <button type="submit" class="btn-primary">Send reset link</button>
+    </form>
+    <p class="muted">
+        <a href="{{ url_for('auth.login') }}">← Back to sign in</a>
+    </p>
+</div>
+{% endblock %}
