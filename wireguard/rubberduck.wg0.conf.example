@@ -1,14 +1,19 @@
-# /etc/wireguard/wg0.conf  —  rubberduck.local side (microgrid / Solis host)
+# /etc/wireguard/wg0.conf  —  rubberduck.local side (Solis / microgrid host)
 #
-# Generate keys on rubberduck:
-#     umask 077 && wg genkey | tee rubberduck.key | wg pubkey > rubberduck.pub
+# Same as desky — prefer install-client.sh over copying this template:
+#
+#     curl -sL https://raw.githubusercontent.com/glenmo/smartenergylab_software/main/wireguard/install-client.sh \
+#         | sudo bash
+#
+# If you do install by hand:
+#     umask 077 && cd ~ && wg genkey | tee rubberduck.key | wg pubkey > rubberduck.pub
 
 [Interface]
-Address    = 10.99.0.3/24
+Address    = 10.13.13.8/24
 PrivateKey = REPLACE_WITH_rubberduck.key_CONTENTS
 
 [Peer]
 PublicKey            = REPLACE_WITH_burgan.pub_CONTENTS
-Endpoint             = burgan.arachnoid.net.au:51820
-AllowedIPs           = 10.99.0.0/24
+Endpoint             = burgan.arachnoid.net.au:41820     # MUST match burgan's ListenPort + UFW
+AllowedIPs           = 10.13.13.0/24
 PersistentKeepalive  = 25

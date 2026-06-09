@@ -447,8 +447,96 @@ Plus the DNS + WireGuard plumbing for the new peer.
 
 | Symptom | Likely cause |
 |---|---|
-| `502` from a subdomain | WireGuard not up, or upstream Flask down. `sudo wg show` + `curl http://10.99.0.2/` from burgan. |
+| `502` from a subdomain | WireGuard not up, or upstream Flask down. `sudo wg show` + `curl http://10.13.13.7/` from burgan. |
 | Login form posts but you stay on the login page | CSRF token mismatch — usually means SECRET_KEY was regenerated. Clear cookies and try again. |
 | Password reset emails not arriving | Check Gmail's "less secure apps" + that you used an **app password**, not your account password. Gmail will reject non-app-password SMTP from a server. |
 | Browser stuck at `https://smartenergylab.software/login?next=https://fox...` after clicking a card | You're not logged in. Sign in first. |
-| `sudo wg show` shows no latest handshake on a peer | UDP 51820 isn't reaching burgan, or keys don't match. |
+| `sudo wg show` shows no latest handshake on a peer | UDP ListenPort isn't reaching burgan, or keys don't match. See "Lessons from first deploy" below. |
+
+## Lessons from first deploy (read this before re-doing on a new host)
+
+Things that cost us time on first deployment and would have been easy
+to avoid if we'd known:
+
+### The UFW rule must match burgan's WireGuard ListenPort exactly
+
+Burgan's `wg0.conf` had `ListenPort = 41820` but UFW had `51820/udp`
+allowed. Every WireGuard handshake from desky and rubberduck was
+dropped at the firewall and we spent an hour staring at "0 B
+received" before noticing. Check both before debugging anything else:
+
+```bash
+sudo grep ListenPort /etc/wireguard/wg0.conf
+sudo ufw status | grep -E "udp"
+```
+
+If they disagree, fix the UFW rule (don't change the WG port — the
+port is in every existing peer's config):
+
+```bash
+sudo ufw allow 41820/udp comment "WireGuard"
+sudo ufw delete allow 51820/udp     # remove the stale rule
+```
+
+### Recover an existing wg0.conf before overwriting it
+
+If burgan already has a `wg0` interface up with other peers (personal
+VPN, etc.), the on-disk `/etc/wireguard/wg0.conf` may be stale or
+gone, but the kernel still has the real config loaded. Dump it first
+before doing anything:
+
+```bash
+sudo wg showconf wg0 | sudo tee /etc/wireguard/wg0.conf.recovered
+```
+
+That dump includes the live `PrivateKey` (which is otherwise
+irrecoverable) and every existing peer. Then APPEND the new
+`[Peer]` blocks to that file rather than starting fresh. Live-load
+without dropping the interface — so existing connections stay up:
+
+```bash
+sudo bash -c 'wg-quick strip wg0 > /tmp/wg0.stripped \
+    && wg syncconf wg0 /tmp/wg0.stripped \
+    && rm /tmp/wg0.stripped'
+```
+
+### Use install-client.sh on each LAN host instead of pasting templates
+
+Some terminals' bracketed-paste / auto-indent behaviour silently
+breaks multi-line heredocs and long `printf`s — long lines get split
+mid-value, heredoc terminators get indented and never match. We hit
+this on both desky and rubberduck and ended up with broken
+`/etc/wireguard/wg0.conf` files that *looked* fine on read but wouldn't
+parse.
+
+The `wireguard/install-client.sh` script in this repo sidesteps the
+problem by writing the file inside a single sudo invocation, not from
+pasted heredocs:
+
+```bash
+# On each LAN host, after generating ~/<hostname>.key:
+curl -sL https://raw.githubusercontent.com/glenmo/smartenergylab_software/main/wireguard/install-client.sh \
+    | sudo bash
+```
+
+### Process substitution doesn't work inside `sudo`
+
+`sudo wg syncconf wg0 <(sudo wg-quick strip wg0)` fails with `fopen:
+No such file or directory`. The outer sudo can't open the
+process-substitution FD created by the parent shell. Use a tempfile
+instead:
+
+```bash
+sudo bash -c 'wg-quick strip wg0 > /tmp/wg0.stripped \
+    && wg syncconf wg0 /tmp/wg0.stripped \
+    && rm /tmp/wg0.stripped'
+```
+
+### HTTP-01, not DNS-01, for the cert
+
+Wildcard certs via manual DNS-01 require two simultaneous TXT
+records at `_acme-challenge.<domain>` — easy to fumble in a DNS UI,
+and renewal needs the same step every 90 days. The SAN cert path in
+README step 7 (HTTP-01 via `--webroot`) is simpler and renewal is
+automatic, as long as the `:80` vhost has the `/.well-known/
+acme-challenge/` carve-out (it does, in `apache/smartenergylab.conf`).

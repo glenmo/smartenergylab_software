@@ -32,10 +32,13 @@ SQLALCHEMY_DATABASE_URI = "sqlite:////var/lib/burgan-portal/portal.sqlite"
 # Apache forwards every request to Flask with the original Host: header
 # intact. Flask reads request.host and looks up the upstream URL here.
 #
-# Upstream IPs are WireGuard tunnel addresses on the wg0 interface:
-#   10.99.0.1 = burgan       (server)
-#   10.99.0.2 = desky        (fox-monitor)
-#   10.99.0.3 = rubberduck   (microgrid_remote_monitor / solis)
+# Upstream IPs are WireGuard tunnel addresses on the wg0 interface.
+# The deployed subnet is 10.13.13.0/24 (matches the long-standing
+# burgan setup; pick a different /24 here only if you're starting
+# fresh and have no other wg peers to coexist with):
+#   10.13.13.1 = burgan       (server)
+#   10.13.13.7 = desky        (fox-monitor)
+#   10.13.13.8 = rubberduck   (microgrid_remote_monitor / solis)
 #
 # Keys are bare hostnames; the public DNS pattern is
 # <key>.smartenergylab.software.
@@ -50,8 +53,8 @@ SQLALCHEMY_DATABASE_URI = "sqlite:////var/lib/burgan-portal/portal.sqlite"
 #     directly. Verify Flask is bound to 0.0.0.0 (or to the wg0 IP) on
 #     rubberduck, otherwise the tunnel won't reach it.
 UPSTREAMS = {
-    "fox":   "http://10.99.0.2",        # → Apache on desky → fox-monitor:5000
-    "solis": "http://10.99.0.3:5000",   # → Flask directly on rubberduck
+    "fox":   "http://10.13.13.7",        # → Apache on desky → fox-monitor:5000
+    "solis": "http://10.13.13.8:5000",   # → Flask directly on rubberduck
 }
 
 # ---------------------------------------------------------------------------

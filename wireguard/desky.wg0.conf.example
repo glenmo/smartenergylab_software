@@ -1,20 +1,23 @@
 # /etc/wireguard/wg0.conf  —  desky.local side (Fox monitor host)
 #
-# Generate keys on desky:
-#     umask 077 && wg genkey | tee desky.key | wg pubkey > desky.pub
-# Paste desky.key into PrivateKey below, and burgan's PUBLIC key
-# into the [Peer] PublicKey below.
+# You almost certainly want install-client.sh in this directory rather
+# than this template — it writes a clean config without any pasting,
+# generation step or sudo gotchas:
+#
+#     curl -sL https://raw.githubusercontent.com/glenmo/smartenergylab_software/main/wireguard/install-client.sh \
+#         | sudo bash
+#
+# If you do install by hand, generate the key first:
+#     umask 077 && cd ~ && wg genkey | tee desky.key | wg pubkey > desky.pub
+# Then paste desky.key into PrivateKey and burgan's PUBLIC key into
+# the [Peer] PublicKey below.
 
 [Interface]
-Address    = 10.99.0.2/24
+Address    = 10.13.13.7/24
 PrivateKey = REPLACE_WITH_desky.key_CONTENTS
 
-# Don't route the whole internet through burgan — only the tunnel net.
-# (Default behaviour with AllowedIPs scoped on the peer.)
 [Peer]
 PublicKey            = REPLACE_WITH_burgan.pub_CONTENTS
-Endpoint             = burgan.arachnoid.net.au:51820
-AllowedIPs           = 10.99.0.0/24
-# Holds the NAT mapping open from behind the residential gateway so
-# burgan can reach desky inbound.
+Endpoint             = burgan.arachnoid.net.au:41820     # MUST match burgan's ListenPort + UFW
+AllowedIPs           = 10.13.13.0/24
 PersistentKeepalive  = 25

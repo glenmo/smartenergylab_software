@@ -1,31 +1,41 @@
 # /etc/wireguard/wg0.conf  —  burgan side (server)
 #
-# Generate keys on burgan with:
-#     umask 077 && wg genkey | tee burgan.key | wg pubkey > burgan.pub
-# Then paste the contents of burgan.key into PrivateKey below, and
-# add each peer's PUBLIC key (generated on its own host) under its
-# [Peer] block.
+# IMPORTANT: if burgan already has a wg0 interface running with other
+# peers (which it usually does for personal-VPN reasons), do NOT
+# overwrite this file by hand. Instead, dump the live config first so
+# you don't lose the kernel-stored PrivateKey or any existing peers:
+#
+#     sudo wg showconf wg0 | sudo tee /etc/wireguard/wg0.conf.recovered
+#     sudo cp /etc/wireguard/wg0.conf.recovered /etc/wireguard/wg0.conf
+#
+# Then APPEND the two [Peer] blocks below to the file (substituting
+# the real desky/rubberduck pubkeys), then live-load with:
+#
+#     sudo bash -c 'wg-quick strip wg0 > /tmp/wg0.stripped \
+#         && wg syncconf wg0 /tmp/wg0.stripped \
+#         && rm /tmp/wg0.stripped'
+#
+# That preserves every existing peer's connection.
+#
+# The /24 subnet, the ListenPort, and the keys below should match
+# whatever burgan was already running. The values shown here are the
+# *deployed* values; substitute if you're standing up a fresh server.
 
 [Interface]
-# Burgan's tunnel address — picked the 10.99.0.0/24 range so it
-# doesn't collide with anything on the residential LAN.
-Address     = 10.99.0.1/24
-ListenPort  = 51820
+Address     = 10.13.13.1/24
+ListenPort  = 41820                                 # MUST match the UFW rule
 PrivateKey  = REPLACE_WITH_burgan.key_CONTENTS
 
-# Optional: forward kernel-routed traffic. Not needed for inbound-only
-# proxying (which is what we're doing here), so left commented.
-# PostUp   = iptables -A FORWARD -i %i -j ACCEPT ; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-# PostDown = iptables -D FORWARD -i %i -j ACCEPT ; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+# UFW: don't forget to allow the port. Easy to forget — we did.
+#     sudo ufw allow 41820/udp comment "WireGuard"
+#     sudo ufw delete allow 51820/udp        # if a stale rule exists
 
-# --- Peer: desky.local (Fox monitor host) -----------------------------
+# --- Peer: desky (Fox H3 monitor host) -------------------------------
 [Peer]
 PublicKey  = REPLACE_WITH_desky.pub_CONTENTS
-AllowedIPs = 10.99.0.2/32
-# Burgan doesn't need to dial desky outbound (desky initiates), so no
-# Endpoint here. PersistentKeepalive is set on the client side.
+AllowedIPs = 10.13.13.7/32
 
-# --- Peer: rubberduck.local (microgrid / Solis host) ------------------
+# --- Peer: rubberduck (Solis / microgrid host) -----------------------
 [Peer]
 PublicKey  = REPLACE_WITH_rubberduck.pub_CONTENTS
-AllowedIPs = 10.99.0.3/32
+AllowedIPs = 10.13.13.8/32
