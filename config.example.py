@@ -78,3 +78,20 @@ RATE_LIMIT_FORGOT = "3 per hour"
 
 # How long a password-reset token is valid for
 RESET_TOKEN_TTL_SECONDS = 60 * 60     # 1 hour
+
+# ---------------------------------------------------------------------------
+# Suspicious-login alerts
+# ---------------------------------------------------------------------------
+# Email to notify when a burst of failed logins is detected. Set to
+# None to disable alerting (failures still get persisted in login_events).
+LOGIN_ALERT_TO = "you@example.com"
+
+# Burst trigger: N or more failures for the same target (email OR ip)
+# within the past WINDOW seconds.
+LOGIN_ALERT_THRESHOLD = 5
+LOGIN_ALERT_WINDOW    = 60 * 15        # 15 minutes
+
+# Cooldown so a sustained attack doesn't generate one email per
+# attempt. Once an alert fires for a given email/IP, no further alert
+# for the same target until COOLDOWN seconds have elapsed.
+LOGIN_ALERT_COOLDOWN  = 60 * 60        # 1 hour

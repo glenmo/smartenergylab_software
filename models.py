@@ -8,7 +8,7 @@ Both small; SQLite is the right size of database here.
 from datetime import datetime, timedelta, timezone
 
 from flask_login import UserMixin
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Text
+from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -70,3 +70,25 @@ class PasswordResetToken(db.Model):
             token=token,
             expires_at=_utcnow() + timedelta(seconds=ttl_seconds),
         )
+
+
+class LoginEvent(db.Model):
+    """
+    One row per login POST. Both successes and failures are recorded
+    so we can investigate brute-force attempts after the fact and
+    trigger alerts on suspicious bursts.
+
+    email_attempted stores whatever the user typed (lowercased) — that
+    may not match a real user, in which case user_id stays NULL.
+    """
+    __tablename__ = "login_events"
+
+    id: Mapped[int]               = mapped_column(Integer, primary_key=True)
+    ts: Mapped[datetime]          = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False, index=True)
+    email_attempted: Mapped[str]  = mapped_column(String(255), nullable=False, index=True)
+    success: Mapped[bool]         = mapped_column(Boolean, nullable=False, index=True)
+    ip_addr: Mapped[str | None]   = mapped_column(String(64), nullable=True, index=True)
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_id: Mapped[int | None]   = mapped_column(ForeignKey("users.id"), nullable=True)
+
+    user: Mapped["User | None"] = relationship()

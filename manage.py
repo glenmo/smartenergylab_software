@@ -16,10 +16,11 @@ Examples (run inside the project venv with PORTAL_CONFIG set):
 import argparse
 import getpass
 import sys
+from datetime import datetime, timedelta, timezone
 
 from app import app
 from extensions import db
-from models import User
+from models import User, LoginEvent
 
 
 def _get_user(email):
@@ -101,6 +102,90 @@ def cmd_delete_user(args):
     return 0
 
 
+def _fmt_ts(ts):
+    if ts is None:
+        return "(none)"
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def cmd_recent_logins(args):
+    with app.app_context():
+        q = db.select(LoginEvent).filter(LoginEvent.success.is_(True))
+        if args.email:
+            q = q.filter(LoginEvent.email_attempted == args.email.strip().lower())
+        # Hide the alert sentinel rows
+        q = q.filter(~LoginEvent.email_attempted.like("_ALERT:%"))
+        q = q.order_by(LoginEvent.ts.desc()).limit(args.limit)
+        rows = db.session.execute(q).scalars().all()
+        if not rows:
+            print("(no successful logins recorded yet)")
+            return 0
+        print(f"{'when':<24}  {'email':<32}  {'ip':<16}  user-agent")
+        print("-" * 100)
+        for r in rows:
+            ua = (r.user_agent or "").replace("\n", " ")[:60]
+            print(f"{_fmt_ts(r.ts):<24}  {r.email_attempted:<32}  {(r.ip_addr or '-'):<16}  {ua}")
+    return 0
+
+
+def cmd_failed_logins(args):
+    with app.app_context():
+        since = datetime.now(timezone.utc) - timedelta(hours=args.since_hours)
+        q = (
+            db.select(LoginEvent)
+              .filter(LoginEvent.success.is_(False))
+              .filter(LoginEvent.ts >= since)
+              .filter(~LoginEvent.email_attempted.like("_ALERT:%"))
+              .order_by(LoginEvent.ts.desc())
+              .limit(args.limit)
+        )
+        rows = db.session.execute(q).scalars().all()
+        if not rows:
+            print(f"(no failed logins in the last {args.since_hours} h)")
+            return 0
+        print(f"{'when':<24}  {'email tried':<32}  {'ip':<16}  user-agent")
+        print("-" * 100)
+        for r in rows:
+            ua = (r.user_agent or "").replace("\n", " ")[:60]
+            print(f"{_fmt_ts(r.ts):<24}  {r.email_attempted:<32}  {(r.ip_addr or '-'):<16}  {ua}")
+
+        # Summary
+        from sqlalchemy import func
+        by_email = db.session.execute(
+            db.select(LoginEvent.email_attempted, func.count(LoginEvent.id))
+              .filter(LoginEvent.success.is_(False))
+              .filter(LoginEvent.ts >= since)
+              .filter(~LoginEvent.email_attempted.like("_ALERT:%"))
+              .group_by(LoginEvent.email_attempted)
+              .order_by(func.count(LoginEvent.id).desc())
+              .limit(10)
+        ).all()
+        if by_email:
+            print()
+            print(f"top email targets, last {args.since_hours} h:")
+            for email, n in by_email:
+                print(f"  {n:>5}  {email}")
+
+        by_ip = db.session.execute(
+            db.select(LoginEvent.ip_addr, func.count(LoginEvent.id))
+              .filter(LoginEvent.success.is_(False))
+              .filter(LoginEvent.ts >= since)
+              .filter(LoginEvent.ip_addr.isnot(None))
+              .filter(~LoginEvent.email_attempted.like("_ALERT:%"))
+              .group_by(LoginEvent.ip_addr)
+              .order_by(func.count(LoginEvent.id).desc())
+              .limit(10)
+        ).all()
+        if by_ip:
+            print()
+            print(f"top source IPs, last {args.since_hours} h:")
+            for ip, n in by_ip:
+                print(f"  {n:>5}  {ip}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Smart Energy Lab portal admin CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -120,6 +205,19 @@ def main():
     p4.add_argument("email")
     p4.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
     p4.set_defaults(func=cmd_delete_user)
+
+    p5 = sub.add_parser("recent-logins",
+                        help="Show recent successful logins (newest first)")
+    p5.add_argument("--limit", type=int, default=20)
+    p5.add_argument("--email", default=None, help="Filter to a single email")
+    p5.set_defaults(func=cmd_recent_logins)
+
+    p6 = sub.add_parser("failed-logins",
+                        help="Show recent failed login attempts + top-N summary")
+    p6.add_argument("--limit", type=int, default=30)
+    p6.add_argument("--since-hours", type=int, default=24,
+                    help="Only show failures from the last N hours (default 24)")
+    p6.set_defaults(func=cmd_failed_logins)
 
     args = parser.parse_args()
     sys.exit(args.func(args))

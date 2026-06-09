@@ -374,12 +374,22 @@ cd /opt/burgan-portal
 sudo -u burgan-portal env PORTAL_CONFIG=/etc/burgan-portal/config.py \
     venv/bin/python manage.py <cmd>
 
-# Commands
+# User management
 manage.py create-user  <email>
 manage.py set-password <email>          # admin password reset
 manage.py list-users
 manage.py delete-user  <email>
+
+# Login activity
+manage.py recent-logins                          # last 20 successful logins
+manage.py recent-logins --limit 50 --email X     # filter to one user
+manage.py failed-logins                          # last 30 failures + summary by email/IP
+manage.py failed-logins --since-hours 168 --limit 200    # week-long view
 ```
+
+Login activity (both successes and failures) is persisted in the
+`login_events` table — see [Login audit + alerts](#login-audit--alerts)
+below.
 
 ```bash
 # Logs
@@ -422,6 +432,31 @@ Two edits, in this order:
 Plus the DNS + WireGuard plumbing for the new peer.
 
 ---
+
+## Login audit + alerts
+
+Every login POST — success or failure — is recorded in the
+`login_events` table with the typed email, source IP, user-agent,
+timestamp and a `success` flag. Two CLI commands surface that data
+quickly without running ad-hoc SQL:
+
+- `manage.py recent-logins` — successful logins, newest first. Add
+  `--email you@example.com` to filter to one user.
+- `manage.py failed-logins` — failures from the last `--since-hours`
+  (default 24) plus a top-10 summary by email and by source IP.
+
+**Burst alerting.** When `LOGIN_ALERT_TO` is set in
+`/etc/burgan-portal/config.py`, the portal emails that address as
+soon as a single email *or* a single source IP racks up
+`LOGIN_ALERT_THRESHOLD` failures inside `LOGIN_ALERT_WINDOW`. A
+`LOGIN_ALERT_COOLDOWN` (default 1 h) prevents one sustained attack
+from generating an inbox flood — at most one email per target per
+cooldown window. Disable alerts by setting `LOGIN_ALERT_TO = None`;
+the table still fills, you just won't get notified.
+
+Alert sentinels are stored as ordinary `login_events` rows with
+`email_attempted` prefixed `_ALERT:` — they're filtered out of CLI
+listings.
 
 ## Security notes
 

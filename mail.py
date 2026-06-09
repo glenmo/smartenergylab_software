@@ -51,6 +51,23 @@ def send(to_email: str, subject: str, body_text: str, body_html: str | None = No
         raise RuntimeError("mail send failed") from e
 
 
+def send_alert(subject: str, body: str):
+    """
+    Dispatch an operational alert to LOGIN_ALERT_TO. Silently does
+    nothing if that config key is unset, so dev runs without SMTP
+    config don't blow up.
+    """
+    to = current_app.config.get("LOGIN_ALERT_TO")
+    if not to:
+        return
+    try:
+        send(to, f"[Smart Energy Lab] {subject}", body)
+    except Exception:
+        # Alerting must never break the request that triggered it.
+        # Failure is already logged inside send().
+        pass
+
+
 def send_reset_email(to_email: str, reset_url: str):
     subject = "Reset your Smart Energy Lab password"
     text = (
