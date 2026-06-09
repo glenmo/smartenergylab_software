@@ -189,9 +189,26 @@ to that host yet — work through step 5 again.
 
 ## 5. WireGuard — keys + interface on all three hosts
 
-On **each host** generate a keypair (key files end up in `~`):
+### 5a. Get the templates onto each host
+
+Step 2 only synced this repo to burgan. The wireguard templates need
+to land on desky and rubberduck too — the cleanest way is to git-clone
+the repo on each, so future updates are a `git pull` away:
 
 ```bash
+ssh you@desky      'git clone https://github.com/glenmo/smartenergylab_software.git ~/smartenergylab_software'
+ssh you@rubberduck 'git clone https://github.com/glenmo/smartenergylab_software.git ~/smartenergylab_software'
+```
+
+(If you'd rather not clone the repo on the LAN hosts, scp the one
+template each needs from your local checkout — `desky.wg0.conf.example`
+to desky, `rubberduck.wg0.conf.example` to rubberduck — and skip the
+git step.)
+
+### 5b. Install WireGuard + generate keys on each host
+
+```bash
+sudo apt install -y wireguard wireguard-tools     # all three hosts
 cd ~ && umask 077
 wg genkey | tee $(hostname).key | wg pubkey > $(hostname).pub
 cat $(hostname).pub      # this is the public key — share it
@@ -203,26 +220,34 @@ You now have:
 - on desky:      `desky.key`,      `desky.pub`
 - on rubberduck: `rubberduck.key`, `rubberduck.pub`
 
-Then **on burgan**, copy `wireguard/burgan.wg0.conf.example` into
-`/etc/wireguard/wg0.conf` and substitute the placeholders:
+You'll need to copy each `.pub` over to burgan (by scp or paste) so
+burgan's `wg0.conf` can register the peers. The `.key` files stay
+where they were generated — never copy them anywhere.
+
+### 5c. Burgan side (the server)
 
 ```bash
 sudo cp /opt/burgan-portal/wireguard/burgan.wg0.conf.example /etc/wireguard/wg0.conf
 sudo nano /etc/wireguard/wg0.conf
 # replace REPLACE_WITH_burgan.key_CONTENTS with the body of ~/burgan.key
 # replace each REPLACE_WITH_*.pub_CONTENTS with the matching .pub from
-# the other hosts (you'll need to copy them across by hand or scp).
+# the other hosts
 sudo chmod 600 /etc/wireguard/wg0.conf
 sudo systemctl enable --now wg-quick@wg0
 ```
 
-Then on **desky** and **rubberduck**, install WireGuard
-(`sudo apt install -y wireguard wireguard-tools`), copy the matching
-client template, fill in the keys, and bring it up:
+### 5d. desky + rubberduck side (the clients)
+
+On each LAN host:
 
 ```bash
-sudo cp wireguard/desky.wg0.conf.example /etc/wireguard/wg0.conf
+# Pick the right template for the host you're on:
+sudo cp ~/smartenergylab_software/wireguard/$(hostname).wg0.conf.example \
+        /etc/wireguard/wg0.conf
 sudo nano /etc/wireguard/wg0.conf
+# replace REPLACE_WITH_<hostname>.key_CONTENTS with body of ~/<hostname>.key
+# replace REPLACE_WITH_burgan.pub_CONTENTS with body of burgan's .pub
+#   (scp it across from burgan or paste it)
 sudo chmod 600 /etc/wireguard/wg0.conf
 sudo systemctl enable --now wg-quick@wg0
 ```
