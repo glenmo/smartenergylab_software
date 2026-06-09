@@ -30,6 +30,35 @@ HOP_BY_HOP = frozenset({
     "content-encoding", "content-length",
 })
 
+# Injected into proxied text/html responses so users have an
+# obvious way back to the portal from each mirrored dashboard
+# without baking a link into the upstream apps.
+_BACK_LINK_HTML = (
+    b'<a href="https://smartenergylab.software/" '
+    b'style="position:fixed;top:10px;left:10px;z-index:99999;'
+    b'background:rgba(15,23,42,0.88);color:#f1f5f9;'
+    b'padding:6px 12px;border-radius:8px;'
+    b'font:600 12px -apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;'
+    b'text-decoration:none;border:1px solid #334155;'
+    b'box-shadow:0 4px 14px rgba(0,0,0,0.35);'
+    b'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">'
+    b'\xe2\x86\x90 Portal</a>'
+)
+
+
+def _inject_back_link(body: bytes) -> bytes:
+    """Inject the back-link just before the closing </body> tag.
+
+    Case-insensitive search; falls back to plain append if the
+    upstream HTML is missing </body> for whatever reason. Bytes in,
+    bytes out — requests has already decoded Content-Encoding.
+    """
+    idx = body.lower().rfind(b"</body>")
+    if idx == -1:
+        return body + _BACK_LINK_HTML
+    return body[:idx] + _BACK_LINK_HTML + body[idx:]
+
+
 def upstream_for_host(host: str) -> str | None:
     """Return the upstream base URL for a Host header, or None for the portal."""
     if not host:
@@ -101,6 +130,19 @@ def forward(path: str):
             if parsed.netloc and parsed.netloc == urlsplit(upstream).netloc:
                 v = parsed._replace(scheme="https", netloc=request.host).geturl()
         out_headers.append((k, v))
+
+    # For text/html responses, buffer the body so we can inject a
+    # "← Portal" link before </body>. Dashboards are at most ~40 KB
+    # so this is cheap; CSV exports and JSON APIs (which can be huge)
+    # stay streamed.
+    content_type = upstream_resp.headers.get("content-type", "").lower()
+    if content_type.startswith("text/html"):
+        body = _inject_back_link(upstream_resp.content)
+        return Response(
+            body,
+            status=upstream_resp.status_code,
+            headers=out_headers,
+        )
 
     return Response(
         stream_with_context(upstream_resp.iter_content(chunk_size=8192)),
