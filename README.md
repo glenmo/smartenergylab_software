@@ -125,24 +125,38 @@ from app import app; print(app.config["UPSTREAMS"])
 
 ## 4. Let burgan reach the inverter dashboards over the tunnel
 
-Both upstream dashboards currently bind Flask to `127.0.0.1`. For the
-WireGuard tunnel to reach them, bind to **0.0.0.0** (and rely on the
-residential firewall to keep them off the public internet).
+Burgan's portal hits the **Apache vhost** on each LAN host (port 80),
+not Flask directly. Apache already binds to `0.0.0.0:80`, so it
+listens on the WireGuard interface automatically — but its vhost
+matching needs to recognise the tunnel IP.
 
-On **desky** — edit `/etc/systemd/system/fox-monitor.service`, change
-`--host 127.0.0.1` to `--host 0.0.0.0`, then:
+On **desky**, add the tunnel IP as a `ServerAlias` so Apache routes
+WireGuard-side requests to the fox-monitor vhost explicitly:
 
 ```bash
-sudo systemctl daemon-reload && sudo systemctl restart fox-monitor
+# Re-run the installer with EXTRA_SERVER_ALIAS — it rewrites the vhost.
+cd /home/glen/fox_remote_monitoring
+EXTRA_SERVER_ALIAS="10.99.0.2" bash install.sh
 ```
 
-On **rubberduck** — same change to whatever unit runs
-`microgrid_remote_monitor` (likely `microgrid-monitor.service`).
+Or, if you'd rather edit by hand:
 
-Apache on each host already listens on `0.0.0.0:80`, so its
-reverse-proxy vhost will answer on the WireGuard interface
-automatically — burgan's proxy can hit `http://10.99.0.2/` and Apache
-forwards to fox-monitor on `127.0.0.1:5000` without further change.
+```bash
+sudo sed -i 's|ServerAlias 192.168.55.93|ServerAlias 192.168.55.93 10.99.0.2|' \
+    /etc/apache2/sites-available/fox-monitor.conf
+sudo systemctl reload apache2
+```
+
+Do the same on **rubberduck** using `10.99.0.3`. Verify (from burgan,
+after WireGuard is up — step 5):
+
+```bash
+curl -sI http://10.99.0.2/   # 200 OK from fox-monitor vhost on desky
+curl -sI http://10.99.0.3/   # 200 OK from microgrid vhost on rubberduck
+```
+
+Flask itself stays bound to `127.0.0.1` — no change needed there,
+no extra LAN exposure of the raw Flask port.
 
 ---
 
