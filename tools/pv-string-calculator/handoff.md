@@ -1,0 +1,154 @@
+# PV String Calculator — handoff
+
+A free, public PV string sizing calculator built for SolarPlus (Aug 2026), modelled on
+wirewrite.co.nz/calculator/solar-string. Single self-contained HTML file — no backend,
+no database, no build framework. Works on phone, tablet and PC, light and dark mode.
+The only external request is Google Fonts (Archivo + Public Sans); everything else,
+including all calculation logic, is inlined.
+
+This document covers what the app does, where it lives in this repo, how to deploy it
+to burgan, how the maths works, and how to change it safely.
+
+---
+
+## What it calculates
+
+Given a PV module's datasheet values, the site temperature extremes, and the inverter's
+DC limits, it reports the allowable modules-per-string range and live pass/fail checks
+for any proposed string length, per the AS/NZS 5033:2021 methodology:
+
+| Result | How |
+|---|---|
+| Cold V<sub>oc</sub> per module | `Voc × (1 + βVoc/100 × (Tmin − 25))`, or `Voc × Table 4.1 factor` when the coefficient isn't available (crystalline Si only) |
+| Hot V<sub>mp</sub> per module | `Vmp × (1 + γ/100 × (Tcell,max − 25))` — γP<sub>max</sub>, falling back to βV<sub>oc</sub> if γ is blank |
+| Cold V<sub>mp</sub> per module | same formula at T<sub>min</sub> |
+| Max modules (absolute) | `floor(inverter max DC input / cold Voc)` |
+| Max modules (MPPT tracking) | `floor(MPPT max / cold Vmp)` |
+| Min modules | `ceil(MPPT min / hot Vmp)` |
+| Design I<sub>sc</sub> per string | `max(1.25 × Isc, Isc corrected to Tcell,max via αIsc)` |
+| Current checks | strings × design I<sub>sc</sub> ≤ inverter I<sub>sc</sub> rating; strings × I<sub>mp</sub> ≤ max input current |
+| Proposed-string checks | cold string V<sub>oc</sub> ≤ max DC input; hot string V<sub>mp</sub> ≥ MPPT min (and ≥ start-up voltage); cold string V<sub>mp</sub> ≤ MPPT max |
+
+The Table 4.1 factor bands (25 °C+ → 1.00 down to −40 °C → 1.25) are embedded in
+`engine.js` (`TABLE_41`) and shown to the user in a collapsible reference table.
+**Before promoting this tool publicly, verify those factors line-by-line against a
+current printed copy of AS/NZS 5033:2021** — the page already carries a
+"guidance only / verify with a licensed designer" disclaimer in the footer.
+
+Non-integer minimum temperatures fall into the next colder band (e.g. −5.5 °C → the
+−10 to −6 °C band, factor 1.14), which is the conservative reading.
+
+## Files
+
+```
+tools/pv-string-calculator/
+├── handoff.md      this file
+├── engine.js       calculation engine — the single source of truth for the maths
+├── ui.html         page template (markup + CSS + UI wiring); contains an
+│                   /*__ENGINE__*/ placeholder where engine.js is inlined
+├── test.js         engine unit tests — run with `node test.js` (23 checks:
+│                   Table 4.1 band edges, a hand-calculated worked example,
+│                   table-vs-coefficient methods, deliberate fail cases)
+└── build.py        inlines engine.js into ui.html, wraps it in a full HTML
+                    document, writes ../../static/string-calculator.html
+
+static/
+└── string-calculator.html   the BUILT artifact that actually gets served —
+                             never edit this file by hand
+```
+
+## Where it's served
+
+The file sits in the Flask app's `static/` folder, so once deployed it is served by
+gunicorn at:
+
+    https://smartenergylab.software/static/string-calculator.html
+
+No login required: the portal's `before_request` host-routing hook only gates the
+proxied inverter subdomains (`fox.`, `solis.`), and the apex `/` view enforces its own
+login — Flask's built-in `/static/` route is untouched by either, so the calculator is
+public by design. (There is no Apache vhost for `burgan.arachnoid.net.au` itself; the
+smartenergylab.software vhost on burgan is the front door.)
+
+No systemd restart is needed for a static file — gunicorn reads it from disk per
+request.
+
+### Optional: a nicer URL
+
+For `https://smartenergylab.software/tools/string-calculator` add this to the portal
+blueprint in `app.py` (it stays public — no `login_required`):
+
+```python
+from flask import send_from_directory
+
+@portal_bp.route("/tools/string-calculator")
+def string_calculator():
+    return send_from_directory("static", "string-calculator.html")
+```
+
+Then `sudo systemctl restart burgan-portal`.
+
+### Optional: link it from the portal page
+
+Add a card or footer link in `templates/portal.html` pointing at the URL above if you
+want logged-in users to find it from the system menu.
+
+## Deploying to burgan
+
+It rides along with the normal deploy flow from the README (§2) — rsync the repo to
+`/tmp/burgan-portal/` and sync into `/opt/burgan-portal/`. The new files land in
+`static/` and `tools/` automatically.
+
+Quick one-off deploy of just this file (from your machine, repo root):
+
+```bash
+scp static/string-calculator.html you@burgan.arachnoid.net.au:/tmp/
+ssh you@burgan.arachnoid.net.au \
+  'sudo install -o burgan-portal -g burgan-portal -m 644 \
+     /tmp/string-calculator.html /opt/burgan-portal/static/'
+```
+
+Check: open https://smartenergylab.software/static/string-calculator.html — the
+defaults (a 550 W module on a 600 V / MPPT 90–560 V inverter at −5 °C) should
+immediately show **"3 – 11 modules"** with all six checks MET.
+
+## Making changes
+
+1. Edit `engine.js` (maths) and/or `ui.html` (layout, copy, defaults, colours).
+2. Rebuild: `python3 build.py` (from `tools/pv-string-calculator/`).
+3. Re-test: `node test.js` — must end `23 passed, 0 failed` (add tests when you add
+   maths; every formula change should get a hand-calculated expectation).
+4. Deploy as above.
+
+Never edit `static/string-calculator.html` directly — the next build overwrites it.
+
+Common tweaks, all in `ui.html`:
+
+- **Default values** — the `value="…"` attributes on the inputs (module, temps,
+  inverter). Blank the optional ones if you'd rather start empty.
+- **Branding** — the wordmark in `<header class="top">` and the colour tokens at the
+  top of the `<style>` block (`--accent`, `--accent-deep` etc.; light theme in
+  `:root`, dark theme in the two `data-theme`/media blocks — change all three
+  consistently).
+- **Disclaimer text** — `<footer class="fine">`.
+
+## Design decisions worth knowing
+
+- **Engine is framework-free ES5-ish JS** exporting via `module.exports` when present,
+  so the identical file runs in the browser (inlined) and under Node for testing.
+- **γP<sub>max</sub> fallback**: hot/cold V<sub>mp</sub> uses the P<sub>max</sub>
+  coefficient when given, otherwise βV<sub>oc</sub> — the common conservative
+  convention when γ isn't published.
+- **1.25 × I<sub>sc</sub> floor**: design short-circuit current is the greater of the
+  AS/NZS 5033 1.25 multiplier and temperature-corrected I<sub>sc</sub>.
+- **MPPT-limited warning**: if the MPPT upper voltage (not the absolute DC limit) is
+  what caps the string, the tool says so — the string is safe above that count but can
+  drift out of the tracking window in cold weather.
+- **No storage, no network calls**: results are computed client-side on every
+  keystroke; nothing is logged or sent anywhere.
+
+## Provenance
+
+Built with Claude (Cowork) for Glen Morris, Aug 2026. Engine verified against
+hand-calculated examples (see `test.js`). A hosted preview also exists as a private
+Claude artifact; the repo copy here is the canonical one.

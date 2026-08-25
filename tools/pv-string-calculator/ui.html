@@ -1,0 +1,562 @@
+<title>SolarPlus String Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+  :root {
+    --ground: #F3F7F9;
+    --card: #FFFFFF;
+    --card-inset: #EDF3F6;
+    --ink: #152430;
+    --ink-soft: #44586A;
+    --ink-faint: #6E8395;
+    --line: #D5E0E7;
+    --line-strong: #B9C9D3;
+    --accent: #2E6E99;
+    --accent-deep: #1E4E70;
+    --accent-tint: #E3EEF5;
+    --pass: #257A4C;
+    --pass-tint: #E1F1E8;
+    --warn: #A8690F;
+    --warn-tint: #F8EEDC;
+    --fail: #B23B2E;
+    --fail-tint: #F9E7E4;
+    --focus: #2E6E99;
+    --shadow: 0 1px 2px rgba(21,36,48,.06), 0 4px 16px rgba(21,36,48,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F1B24;
+      --card: #16242F;
+      --card-inset: #1D2E3B;
+      --ink: #E4EDF3;
+      --ink-soft: #A9BCC9;
+      --ink-faint: #7E93A2;
+      --line: #2A3D4B;
+      --line-strong: #3A5062;
+      --accent: #5D9EC9;
+      --accent-deep: #7FB5DA;
+      --accent-tint: #1B3446;
+      --pass: #57B383;
+      --pass-tint: #17352A;
+      --warn: #D9A353;
+      --warn-tint: #3A2E17;
+      --fail: #E07A6D;
+      --fail-tint: #3F231F;
+      --focus: #5D9EC9;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F1B24;
+    --card: #16242F;
+    --card-inset: #1D2E3B;
+    --ink: #E4EDF3;
+    --ink-soft: #A9BCC9;
+    --ink-faint: #7E93A2;
+    --line: #2A3D4B;
+    --line-strong: #3A5062;
+    --accent: #5D9EC9;
+    --accent-deep: #7FB5DA;
+    --accent-tint: #1B3446;
+    --pass: #57B383;
+    --pass-tint: #17352A;
+    --warn: #D9A353;
+    --warn-tint: #3A2E17;
+    --fail: #E07A6D;
+    --fail-tint: #3F231F;
+    --focus: #5D9EC9;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: 'Public Sans', 'Segoe UI', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 16px 56px; }
+
+  /* ---------- header ---------- */
+  header.top {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 6px;
+  }
+  .wordmark {
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 20px;
+    letter-spacing: -0.02em; color: var(--ink);
+  }
+  .wordmark .plus { color: var(--accent); }
+  .std-badge {
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 11.5px;
+    letter-spacing: .06em; text-transform: uppercase;
+    color: var(--accent-deep); background: var(--accent-tint);
+    border: 1px solid var(--line); border-radius: 4px; padding: 3px 9px;
+  }
+  h1 {
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: clamp(26px, 4.5vw, 34px);
+    letter-spacing: -0.02em; margin: 10px 0 6px; text-wrap: balance;
+  }
+  p.lede { color: var(--ink-soft); margin: 0 0 24px; max-width: 62ch; }
+
+  /* ---------- layout ---------- */
+  .cols { display: grid; grid-template-columns: 1fr; gap: 18px; }
+  @media (min-width: 880px) {
+    .cols { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: start; }
+    .results-col { position: sticky; top: 16px; }
+  }
+  .inputs-col, .results-col { display: grid; gap: 18px; min-width: 0; }
+
+  /* ---------- cards ---------- */
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: var(--shadow); padding: 18px 18px 20px;
+  }
+  .card h2 {
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 13px;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint);
+    margin: 0 0 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .card h2 .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); flex: none; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 14px; }
+  @media (max-width: 420px) { .grid3 { grid-template-columns: 1fr 1fr; } }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .field.span2 { grid-column: span 2; }
+  label {
+    font-size: 12.5px; font-weight: 600; color: var(--ink-soft);
+    display: flex; justify-content: space-between; gap: 6px; align-items: baseline;
+  }
+  label .unit { font-weight: 500; color: var(--ink-faint); font-size: 11.5px; }
+  input[type="number"] {
+    width: 100%; padding: 9px 10px; font: inherit; font-variant-numeric: tabular-nums;
+    color: var(--ink); background: var(--card-inset);
+    border: 1px solid var(--line-strong); border-radius: 7px;
+    appearance: textfield; min-height: 42px;
+  }
+  input[type="number"]:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--focus); }
+  .hint { font-size: 12px; color: var(--ink-faint); line-height: 1.4; }
+  .field-note { font-size: 12px; color: var(--warn); }
+
+  /* segmented control */
+  .seg {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+    background: var(--card-inset); border: 1px solid var(--line); border-radius: 8px;
+    padding: 4px; margin: 2px 0 14px;
+  }
+  .seg button {
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--ink-soft);
+    background: transparent; border: 0; border-radius: 6px; padding: 8px 6px;
+    cursor: pointer; min-height: 40px;
+  }
+  .seg button[aria-pressed="true"] { background: var(--card); color: var(--accent-deep); box-shadow: var(--shadow); }
+  .seg button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+  /* ---------- verdict ---------- */
+  .verdict { text-align: left; }
+  .verdict .eyebrow {
+    font-family: 'Archivo', sans-serif; font-size: 12px; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 2px;
+  }
+  .verdict .big {
+    font-family: 'Archivo', sans-serif; font-weight: 800; letter-spacing: -0.02em;
+    font-size: clamp(38px, 8vw, 52px); line-height: 1.1; color: var(--accent-deep);
+    font-variant-numeric: tabular-nums;
+  }
+  .verdict .big.bad { color: var(--fail); }
+  .verdict .sub { color: var(--ink-soft); font-size: 13.5px; margin-top: 2px; }
+
+  /* proposed stepper */
+  .stepper-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .stepper { display: flex; align-items: stretch; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+  .stepper button {
+    font: inherit; font-size: 20px; font-weight: 600; width: 44px; min-height: 44px;
+    border: 0; background: var(--card-inset); color: var(--accent-deep); cursor: pointer;
+  }
+  .stepper button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  .stepper input {
+    width: 64px; text-align: center; border: 0; border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line); font: inherit; font-weight: 700; font-size: 18px;
+    font-variant-numeric: tabular-nums; color: var(--ink); background: var(--card); appearance: textfield;
+  }
+  .stepper input:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  .stepper-label { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+  .overall-chip {
+    margin-left: auto; font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 13px;
+    letter-spacing: .04em; padding: 6px 12px; border-radius: 999px;
+  }
+  .overall-chip.ok { background: var(--pass-tint); color: var(--pass); }
+  .overall-chip.no { background: var(--fail-tint); color: var(--fail); }
+
+  /* checks */
+  ul.checks { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+  ul.checks li {
+    display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start;
+    background: var(--card-inset); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+  }
+  .chip {
+    font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: .05em;
+    padding: 3px 8px; border-radius: 999px; margin-top: 1px;
+  }
+  .chip.ok { background: var(--pass-tint); color: var(--pass); }
+  .chip.no { background: var(--fail-tint); color: var(--fail); }
+  .check-label { font-weight: 600; font-size: 13.5px; }
+  .check-detail { font-size: 12.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+
+  /* voltage window diagram */
+  .vwin { margin-top: 4px; }
+  .vwin .axis {
+    position: relative; height: 64px; border-radius: 8px;
+    background: var(--card-inset); border: 1px solid var(--line); overflow: hidden;
+  }
+  .vwin .mppt-band { position: absolute; top: 0; bottom: 0; background: var(--accent-tint); border-left: 1px solid var(--line-strong); border-right: 1px solid var(--line-strong); }
+  .vwin .mppt-band span {
+    position: absolute; top: 4px; left: 6px; font-size: 10.5px; font-weight: 600;
+    letter-spacing: .05em; color: var(--accent-deep); text-transform: uppercase; white-space: nowrap;
+  }
+  .vwin .dc-limit { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed var(--fail); }
+  .vwin .dc-limit span {
+    position: absolute; bottom: 3px; right: 4px; font-size: 10.5px; font-weight: 600;
+    color: var(--fail); white-space: nowrap;
+  }
+  .vwin .op-bar { position: absolute; top: 26px; height: 14px; border-radius: 4px; background: var(--pass); min-width: 3px; }
+  .vwin .op-bar.no { background: var(--fail); }
+  .vwin .scale-row {
+    display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-faint);
+    margin-top: 4px; font-variant-numeric: tabular-nums;
+  }
+  .vwin-caption { font-size: 12.5px; color: var(--ink-soft); margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .vwin-caption b { color: var(--ink); }
+
+  /* derived values */
+  .dgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (min-width: 560px) { .dgrid { grid-template-columns: repeat(3, 1fr); } }
+  .dcell { background: var(--card-inset); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .dcell .k { font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); }
+  .dcell .v { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .dcell .v small { font-size: 12px; font-weight: 500; color: var(--ink-faint); }
+
+  /* warnings */
+  .warnbox { border-left: 3px solid var(--warn); background: var(--warn-tint); color: var(--ink); border-radius: 0 8px 8px 0; padding: 10px 12px; font-size: 13px; }
+  .warnbox + .warnbox { margin-top: 8px; }
+  .errbox { border-left: 3px solid var(--fail); background: var(--fail-tint); color: var(--ink); border-radius: 0 8px 8px 0; padding: 10px 12px; font-size: 13px; }
+
+  /* table 4.1 reference */
+  details.t41 { border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: var(--shadow); }
+  details.t41 summary {
+    cursor: pointer; padding: 14px 18px; font-family: 'Archivo', sans-serif;
+    font-weight: 600; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft);
+  }
+  details.t41 summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 10px; }
+  .t41-scroll { overflow-x: auto; padding: 0 18px 16px; }
+  table.t41t { border-collapse: collapse; width: 100%; min-width: 360px; font-size: 13px; font-variant-numeric: tabular-nums; }
+  table.t41t th, table.t41t td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  table.t41t th { font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-faint); }
+  table.t41t tr.active td { background: var(--accent-tint); color: var(--accent-deep); font-weight: 700; }
+  .t41-note { padding: 0 18px 16px; font-size: 12.5px; color: var(--ink-faint); max-width: 68ch; }
+
+  footer.fine {
+    margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-size: 12.5px; color: var(--ink-faint); max-width: 76ch; line-height: 1.55;
+  }
+  footer.fine a { color: var(--accent); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .vwin .op-bar, .vwin .dc-limit, .vwin .mppt-band { transition: left .25s ease, width .25s ease; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="wordmark">SolarPlus<span class="plus">+</span> <span style="font-weight:500;color:var(--ink-faint)">Tools</span></div>
+    <div class="std-badge">AS/NZS 5033:2021</div>
+  </header>
+  <h1>PV String Calculator</h1>
+  <p class="lede">Size PV strings against your inverter's voltage and current limits, with cold-weather V<sub>oc</sub> correction by temperature coefficient or AS/NZS 5033:2021 Table 4.1. Enter the module datasheet values and the results update as you type.</p>
+
+  <div class="cols">
+    <div class="inputs-col">
+
+      <section class="card" aria-labelledby="h-module">
+        <h2 id="h-module"><span class="dot"></span>PV module — datasheet (STC)</h2>
+        <div class="grid2">
+          <div class="field"><label for="voc">Open-circuit voltage V<sub>oc</sub> <span class="unit">V</span></label><input type="number" id="voc" step="0.1" value="49.5" inputmode="decimal"></div>
+          <div class="field"><label for="vmp">MPP voltage V<sub>mp</sub> <span class="unit">V</span></label><input type="number" id="vmp" step="0.1" value="41.5" inputmode="decimal"></div>
+          <div class="field"><label for="isc">Short-circuit current I<sub>sc</sub> <span class="unit">A</span></label><input type="number" id="isc" step="0.01" value="13.90" inputmode="decimal"></div>
+          <div class="field"><label for="imp">MPP current I<sub>mp</sub> <span class="unit">A</span></label><input type="number" id="imp" step="0.01" value="13.25" inputmode="decimal"></div>
+          <div class="field span2"><label for="pmax">Rated power P<sub>max</sub> <span class="unit">W · optional</span></label><input type="number" id="pmax" step="1" value="550" inputmode="decimal"></div>
+        </div>
+
+        <h2 style="margin-top:18px">Cold-V<sub>oc</sub> method</h2>
+        <div class="seg" role="group" aria-label="Voltage correction method">
+          <button type="button" id="m-coeff" aria-pressed="true">Temperature coefficients</button>
+          <button type="button" id="m-table" aria-pressed="false">Table 4.1 factor</button>
+        </div>
+        <div id="coeff-fields" class="grid3">
+          <div class="field"><label for="beta">β V<sub>oc</sub> <span class="unit">%/°C</span></label><input type="number" id="beta" step="0.01" value="-0.25" inputmode="decimal"><span class="field-note" id="beta-note" hidden>β is usually negative — check the sign.</span></div>
+          <div class="field"><label for="alpha">α I<sub>sc</sub> <span class="unit">%/°C</span></label><input type="number" id="alpha" step="0.001" value="0.045" inputmode="decimal"></div>
+          <div class="field"><label for="gamma">γ P<sub>max</sub> <span class="unit">%/°C</span></label><input type="number" id="gamma" step="0.01" value="-0.30" inputmode="decimal"></div>
+        </div>
+        <p class="hint" id="coeff-hint">Enter coefficients exactly as the datasheet shows them, e.g. −0.25. γ is used for hot-weather V<sub>mp</sub>; leave it blank to fall back to β.</p>
+        <p class="hint" id="table-hint" hidden>Table 4.1 applies to crystalline and multi-crystalline silicon modules when the V<sub>oc</sub> temperature coefficient is not available. The factor is picked automatically from the lowest expected temperature below.</p>
+      </section>
+
+      <section class="card" aria-labelledby="h-site">
+        <h2 id="h-site"><span class="dot"></span>Site temperatures</h2>
+        <div class="grid2">
+          <div class="field"><label for="tmin">Lowest expected <span class="unit">°C</span></label><input type="number" id="tmin" step="1" value="-5" inputmode="numeric"></div>
+          <div class="field"><label for="tcell">Highest cell temp <span class="unit">°C</span></label><input type="number" id="tcell" step="1" value="70" inputmode="numeric"></div>
+        </div>
+        <p class="hint">Use the record low for the site (daytime module temperature can reach ambient at sunrise). 70&nbsp;°C cell temperature suits most ventilated rooftop arrays; use 75–80&nbsp;°C for poorly ventilated mounting.</p>
+      </section>
+
+      <section class="card" aria-labelledby="h-inv">
+        <h2 id="h-inv"><span class="dot"></span>Inverter / MPPT</h2>
+        <div class="grid2">
+          <div class="field"><label for="vinvmax">Max DC input <span class="unit">V</span></label><input type="number" id="vinvmax" step="1" value="600" inputmode="numeric"></div>
+          <div class="field"><label for="vstart">Start-up voltage <span class="unit">V · optional</span></label><input type="number" id="vstart" step="1" value="100" inputmode="numeric"></div>
+          <div class="field"><label for="vmpptmin">MPPT minimum <span class="unit">V</span></label><input type="number" id="vmpptmin" step="1" value="90" inputmode="numeric"></div>
+          <div class="field"><label for="vmpptmax">MPPT maximum <span class="unit">V</span></label><input type="number" id="vmpptmax" step="1" value="560" inputmode="numeric"></div>
+          <div class="field"><label for="impptmax">Max input current <span class="unit">A / MPPT · optional</span></label><input type="number" id="impptmax" step="0.1" value="16" inputmode="decimal"></div>
+          <div class="field"><label for="iscmpptmax">Max I<sub>sc</sub> rating <span class="unit">A / MPPT · optional</span></label><input type="number" id="iscmpptmax" step="0.1" value="24" inputmode="decimal"></div>
+          <div class="field span2"><label for="nstrings">Strings in parallel on this MPPT</label><input type="number" id="nstrings" step="1" min="1" value="1" inputmode="numeric"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="results-col">
+      <section class="card verdict" aria-live="polite">
+        <div class="eyebrow">Allowable string length</div>
+        <div class="big" id="range-big">–</div>
+        <div class="sub" id="range-sub"></div>
+        <div id="msgs"></div>
+
+        <div class="stepper-row">
+          <span class="stepper-label">Check a string of</span>
+          <div class="stepper">
+            <button type="button" id="n-dec" aria-label="One module fewer">−</button>
+            <input type="number" id="nprop" step="1" min="1" value="10" inputmode="numeric" aria-label="Modules per string to check">
+            <button type="button" id="n-inc" aria-label="One module more">+</button>
+          </div>
+          <span class="stepper-label">modules</span>
+          <span class="overall-chip ok" id="overall-chip">CHECKS</span>
+        </div>
+        <ul class="checks" id="checks"></ul>
+      </section>
+
+      <section class="card vwin" aria-labelledby="h-vwin">
+        <h2 id="h-vwin"><span class="dot"></span>String voltage vs inverter window</h2>
+        <div class="axis" id="axis" role="img" aria-label="Diagram of the string operating voltage range against the MPPT window and the inverter maximum DC input voltage">
+          <div class="mppt-band" id="band"><span>MPPT window</span></div>
+          <div class="dc-limit" id="dcline"><span id="dclabel">Max DC</span></div>
+          <div class="op-bar" id="opbar"></div>
+        </div>
+        <div class="scale-row"><span>0 V</span><span id="scale-max">–</span></div>
+        <p class="vwin-caption" id="vwin-caption"></p>
+      </section>
+
+      <section class="card" aria-labelledby="h-derived">
+        <h2 id="h-derived"><span class="dot"></span>Derived values</h2>
+        <div class="dgrid" id="dgrid"></div>
+      </section>
+
+      <details class="t41">
+        <summary>AS/NZS 5033:2021 Table 4.1 — cold V<sub>oc</sub> factors</summary>
+        <div class="t41-scroll">
+          <table class="t41t" id="t41t">
+            <thead><tr><th>Lowest expected temperature</th><th>V<sub>oc</sub> correction factor</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="t41-note">Applies to crystalline and multi-crystalline silicon modules where the manufacturer's V<sub>oc</sub> temperature coefficient is not available. Where the coefficient is available, the coefficient method gives the exact figure and should be preferred.</p>
+      </details>
+
+      <footer class="fine">
+        Guidance only. String sizing must be verified by a licensed designer against the current module and inverter datasheets and AS/NZS&nbsp;5033:2021 / AS/NZS&nbsp;4777 before installation. Design short-circuit current is taken as the greater of 1.25&nbsp;×&nbsp;I<sub>sc</sub> and temperature-corrected I<sub>sc</sub>.
+        A free tool by <a href="https://solarplus.co" rel="noopener">SolarPlus</a> — solar design, sales &amp; CRM software.
+      </footer>
+    </div>
+  </div>
+</div>
+
+<script>
+/*__ENGINE__*/
+
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var method = 'coeff';
+
+  function num(id) {
+    var v = parseFloat($(id).value);
+    return isNaN(v) ? null : v;
+  }
+  function fmt(x, d) { return (Math.round(x * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d); }
+
+  /* Table 4.1 reference rows */
+  (function fillTable() {
+    var tb = $('t41t').tBodies[0];
+    var rows = [['25 °C and above', '1.00']].concat(TABLE_41.map(function (b) {
+      return [b.lo + ' to ' + b.hi + ' °C', b.f.toFixed(2)];
+    }));
+    rows.forEach(function (r) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + r[0] + '</td><td>' + r[1] + '</td>';
+      tb.appendChild(tr);
+    });
+  })();
+
+  function setMethod(m) {
+    method = m;
+    $('m-coeff').setAttribute('aria-pressed', m === 'coeff');
+    $('m-table').setAttribute('aria-pressed', m === 'table');
+    $('coeff-fields').style.display = m === 'coeff' ? '' : 'none';
+    $('coeff-hint').hidden = m !== 'coeff';
+    $('table-hint').hidden = m !== 'table';
+    recalc();
+  }
+  $('m-coeff').addEventListener('click', function () { setMethod('coeff'); });
+  $('m-table').addEventListener('click', function () { setMethod('table'); });
+
+  $('n-dec').addEventListener('click', function () { step(-1); });
+  $('n-inc').addEventListener('click', function () { step(1); });
+  function step(d) {
+    var v = num('nprop') || 1;
+    $('nprop').value = Math.max(1, Math.round(v) + d);
+    recalc();
+  }
+
+  ['voc','vmp','isc','imp','pmax','beta','alpha','gamma','tmin','tcell','vinvmax','vstart','vmpptmin','vmpptmax','impptmax','iscmpptmax','nstrings','nprop']
+    .forEach(function (id) { $(id).addEventListener('input', recalc); });
+
+  function chipLi(c) {
+    return '<li><span class="chip ' + (c.pass ? 'ok">MET' : 'no">NOT MET') + '</span>' +
+      '<span><span class="check-label">' + c.label + '</span><br>' +
+      '<span class="check-detail">' + fmt(c.value, 1) + ' ' + c.unit + ' ' + c.cmp + ' ' + fmt(c.limit, 1) + ' ' + c.unit +
+      ' &nbsp;·&nbsp; ' + c.detail + '</span></span></li>';
+  }
+
+  function dcell(k, v, sub) {
+    return '<div class="dcell"><div class="k">' + k + '</div><div class="v">' + v +
+      (sub ? ' <small>' + sub + '</small>' : '') + '</div></div>';
+  }
+
+  function recalc() {
+    var voc = num('voc'), vmp = num('vmp'), isc = num('isc'), imp = num('imp');
+    var vinvmax = num('vinvmax'), tmin = num('tmin');
+    var msgs = $('msgs'); msgs.innerHTML = '';
+
+    var beta = num('beta');
+    $('beta-note').hidden = !(method === 'coeff' && beta != null && beta > 0);
+
+    var missing = [];
+    if (voc == null || voc <= 0) missing.push('module V<sub>oc</sub>');
+    if (vmp == null || vmp <= 0) missing.push('module V<sub>mp</sub>');
+    if (vinvmax == null || vinvmax <= 0) missing.push('inverter max DC input');
+    if (tmin == null) missing.push('lowest temperature');
+    if (method === 'coeff' && beta == null) missing.push('β V<sub>oc</sub> coefficient');
+    if (missing.length) {
+      $('range-big').textContent = '–';
+      $('range-big').className = 'big';
+      $('range-sub').innerHTML = 'Enter ' + missing.join(', ') + ' to calculate.';
+      $('checks').innerHTML = ''; $('dgrid').innerHTML = ''; $('vwin-caption').textContent = '';
+      $('overall-chip').textContent = '—'; $('overall-chip').className = 'overall-chip ok';
+      return;
+    }
+    if (voc <= vmp) {
+      msgs.innerHTML = '<div class="warnbox">V<sub>oc</sub> should be higher than V<sub>mp</sub> — check the datasheet values.</div>';
+    }
+
+    var inp = {
+      voc: voc, vmp: vmp, isc: isc || 0, imp: imp || 0, pmax: num('pmax'),
+      betaVoc: beta, alphaIsc: num('alpha'), gammaPmp: num('gamma'),
+      method: method, tMin: tmin, tCellMax: num('tcell'),
+      vInvMax: vinvmax, vMpptMin: num('vmpptmin') || 0, vMpptMax: num('vmpptmax') || 0,
+      vStart: num('vstart'), iMpptMax: num('impptmax'), iscMpptMax: num('iscmpptmax'),
+      nStrings: Math.max(1, Math.round(num('nstrings') || 1)),
+      nProposed: num('nprop')
+    };
+    var r = calcString(inp);
+
+    if (r.errors.length) {
+      $('range-big').textContent = '—';
+      $('range-big').className = 'big bad';
+      $('range-sub').textContent = '';
+      msgs.innerHTML = r.errors.map(function (e) { return '<div class="errbox">' + e + '</div>'; }).join('');
+      $('checks').innerHTML = ''; $('dgrid').innerHTML = '';
+      return;
+    }
+
+    /* verdict */
+    if (r.rangeOk) {
+      $('range-big').textContent = r.nMin === r.nMax ? r.nMax + ' modules' : r.nMin + ' – ' + r.nMax + ' modules';
+      $('range-big').className = 'big';
+      $('range-sub').innerHTML = 'per string · V<sub>oc</sub> limit allows up to ' + r.nMaxVoc +
+        (r.nMaxMppt != null ? ', MPPT window allows ' + r.nMin + '–' + r.nMaxMppt : '');
+    } else {
+      $('range-big').textContent = 'No valid length';
+      $('range-big').className = 'big bad';
+      $('range-sub').textContent = 'This module and inverter combination has no string length that satisfies every limit.';
+    }
+    r.warnings.forEach(function (w) { msgs.innerHTML += '<div class="warnbox">' + w + '</div>'; });
+
+    /* checks for proposed string */
+    var allChecks = [];
+    if (r.proposed) allChecks = r.proposed.checks.concat(r.checks);
+    $('checks').innerHTML = allChecks.map(chipLi).join('');
+    var overallOk = r.proposed ? r.proposed.pass : false;
+    $('overall-chip').textContent = overallOk ? 'ALL CHECKS MET' : 'CHECK FAILED';
+    $('overall-chip').className = 'overall-chip ' + (overallOk ? 'ok' : 'no');
+
+    /* voltage window diagram */
+    if (r.proposed) {
+      var p = r.proposed;
+      var scaleMax = Math.max(inp.vInvMax, p.vOcCold, inp.vMpptMax || 0) * 1.06;
+      var pct = function (v) { return Math.max(0, Math.min(100, v / scaleMax * 100)); };
+      if (inp.vMpptMin > 0 && inp.vMpptMax > 0) {
+        $('band').style.left = pct(inp.vMpptMin) + '%';
+        $('band').style.width = (pct(inp.vMpptMax) - pct(inp.vMpptMin)) + '%';
+        $('band').style.display = '';
+      } else { $('band').style.display = 'none'; }
+      $('dcline').style.left = pct(inp.vInvMax) + '%';
+      $('dclabel').textContent = 'Max DC ' + fmt(inp.vInvMax, 0) + ' V';
+      $('opbar').style.left = pct(p.vMpHot) + '%';
+      $('opbar').style.width = Math.max(0.3, pct(p.vOcCold) - pct(p.vMpHot)) + '%';
+      $('opbar').className = 'op-bar' + (p.pass ? '' : ' no');
+      $('scale-max').textContent = fmt(scaleMax, 0) + ' V';
+      $('vwin-caption').innerHTML = '<b>' + p.n + ' modules:</b> operates from <b>' + fmt(p.vMpHot, 0) +
+        ' V</b> (V<sub>mp</sub> at ' + fmt(inp.tCellMax == null ? 70 : inp.tCellMax, 0) + ' °C) up to <b>' + fmt(p.vOcCold, 0) +
+        ' V</b> (V<sub>oc</sub> at ' + fmt(inp.tMin, 0) + ' °C)' +
+        (p.power ? ' · ' + fmt(p.power / 1000, 2) + ' kW DC total' : '') + '.';
+    }
+
+    /* derived values */
+    var cells = [];
+    cells.push(dcell('V<sub>oc</sub> cold / module', fmt(r.vocCold, 1) + ' V',
+      method === 'table' ? '× ' + r.vocFactor.toFixed(2) + ' (' + r.vocBand + ')' : '× ' + r.vocFactor.toFixed(3)));
+    cells.push(dcell('V<sub>mp</sub> hot / module', fmt(r.vmpHot, 1) + ' V', 'at ' + fmt(inp.tCellMax == null ? 70 : inp.tCellMax, 0) + ' °C cell'));
+    cells.push(dcell('V<sub>mp</sub> cold / module', fmt(r.vmpCold, 1) + ' V', 'at ' + fmt(inp.tMin, 0) + ' °C'));
+    if (inp.isc > 0) cells.push(dcell('Design I<sub>sc</sub> / string', fmt(r.iscDesign, 2) + ' A', 'max of 1.25 × I<sub>sc</sub>, hot I<sub>sc</sub>'));
+    cells.push(dcell('Max by V<sub>oc</sub> limit', r.nMaxVoc + '', 'modules'));
+    if (r.nMaxMppt != null) cells.push(dcell('Max in MPPT window', r.nMaxMppt + '', 'modules'));
+    $('dgrid').innerHTML = cells.join('');
+
+    /* highlight active Table 4.1 row */
+    var rows = $('t41t').tBodies[0].rows;
+    for (var i = 0; i < rows.length; i++) rows[i].className = '';
+    if (method === 'table') {
+      var idx = 0;
+      if (inp.tMin < 25) {
+        for (var j = 0; j < TABLE_41.length; j++) { if (inp.tMin >= TABLE_41[j].lo) { idx = j + 1; break; } }
+      }
+      if (rows[idx]) rows[idx].className = 'active';
+    }
+  }
+
+  recalc();
+})();
+</script>
