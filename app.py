@@ -24,6 +24,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from auth import bp as auth_bp
 from extensions import csrf, db, limiter, login_manager
 from proxy import auth_gate, forward, is_proxied_host
+from toolsite import is_tools_host, serve_tool
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,6 +86,11 @@ def create_app():
     # ----- host-aware dispatch ------------------------------------------
     @app.before_request
     def route_by_host():
+        # Public tools subdomain — served locally from static/, no auth.
+        # Checked before the proxy branch so a tools page can never be
+        # sent through auth_gate().
+        if is_tools_host(request.host):
+            return serve_tool(request.path.lstrip("/"))
         # Proxied subdomain? enforce login, then forward to upstream.
         if is_proxied_host(request.host):
             gate = auth_gate()

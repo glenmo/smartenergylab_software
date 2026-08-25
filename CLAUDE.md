@@ -22,14 +22,24 @@ original `Host` (`ProxyPreserveHost On`) and forwards *every* request for all th
 vhosts to the same gunicorn on `127.0.0.1:8000`. Flask then decides what to do:
 
 - `app.py`'s `before_request` hook (`route_by_host`) runs first for every request.
-  If `is_proxied_host(request.host)` (i.e. the subdomain is in `config.UPSTREAMS`),
+  If `is_tools_host(request.host)` (the public `tools.` subdomain), it serves a
+  static page via `toolsite.serve_tool()` with **no auth** — this branch is first
+  precisely so a public page can never fall into the auth gate below it.
+- Else if `is_proxied_host(request.host)` (i.e. the subdomain is in `config.UPSTREAMS`),
   it enforces login via `auth_gate()` then hands off to `proxy.forward()` — the
   proxied subdomains have **no Flask URL routes of their own**.
 - Otherwise (the apex domain) it falls through to the normal blueprint views
   (`portal_bp`, `auth_bp`).
 
-So `proxy.py` is reached through the request hook, not through registered routes. If you
-add a subdomain, you add it to `UPSTREAMS` in config — you don't add a route.
+So `proxy.py` and `toolsite.py` are both reached through the request hook, not through
+registered routes. Adding a subdomain means adding it to `UPSTREAMS` (authenticated
+mirror) or to `TOOLS` in `toolsite.py` (public static page) — not adding a route. The
+two are mutually exclusive: never put a public tool host in `UPSTREAMS`, because
+everything in `UPSTREAMS` is gated by `auth_gate()`.
+
+Either way, a new subdomain also needs an Apache vhost **and a certbot reissue** — the
+cert is a SAN cert naming each host explicitly, while DNS is a wildcard, so a new name
+resolves long before it has a valid certificate.
 
 Session cookies are scoped to `.smartenergylab.software` (leading dot, set in config)
 so a single login is shared across the apex and every subdomain.
@@ -42,6 +52,12 @@ so a single login is shared across the apex and every subdomain.
   `Location` redirects from the internal WireGuard IP to the public subdomain, strips
   hop-by-hop / stack-leaking headers, and buffers `text/html` responses to inject a
   fixed "← Portal" back-link before `</body>` (CSV/JSON stay streamed).
+- `toolsite.py` — the public `tools.` subdomain: an allow-list (`TOOLS`) mapping URL
+  paths to files in `static/`, served with no login. Named `toolsite.py`, not
+  `tools.py`, to avoid colliding with the `tools/` source directory.
+- `tools/pv-string-calculator/` — source for the public PV string calculator
+  (`engine.js` + `ui.html` → `build.py` → `static/string-calculator.html`, with
+  `node test.js` covering the maths). Never hand-edit the built file in `static/`.
 - `auth.py` — login / logout / forgot / reset routes, plus login-event recording and
   the failed-login burst-alert logic (`_maybe_alert_on_burst`).
 - `models.py` — `User`, `PasswordResetToken`, `LoginEvent` (SQLAlchemy 2.0 typed models).

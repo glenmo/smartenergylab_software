@@ -9,6 +9,7 @@ auth gateway. Each monitored system is mirrored at its own subdomain:
 | `smartenergylab.software` | Login + system menu + forgot/reset | local Flask |
 | `fox.smartenergylab.software` | [fox_remote_monitoring](https://github.com/glenmo/fox_remote_monitoring) | desky.local (WireGuard 10.99.0.2) |
 | `solis.smartenergylab.software` | microgrid_remote_monitor | rubberduck.local (WireGuard 10.99.0.3) |
+| `tools.smartenergylab.software` | Free public tools — PV string calculator (**no login**) | local Flask, static files |
 
 ```
                               Internet
@@ -43,7 +44,8 @@ auth gateway. Each monitored system is mirrored at its own subdomain:
 |---|---|---|
 | Flask portal app + gunicorn + systemd unit | burgan | this repo, rsync'd to `/opt/burgan-portal` |
 | Apache vhost | burgan | `apache/smartenergylab.conf` |
-| Let's Encrypt wildcard cert | burgan | `certbot` |
+| Let's Encrypt SAN cert (apex + fox + solis + tools) | burgan | `certbot` |
+| PV string calculator (public, no login) | burgan | `static/string-calculator.html`, built from `tools/pv-string-calculator/` |
 | WireGuard `wg0` interface | burgan, desky, rubberduck | `wireguard/*.conf.example` (one per host) |
 
 The Fox / Solis dashboards on desky / rubberduck need a tiny config
@@ -288,11 +290,18 @@ Check: `curl -sI http://127.0.0.1:8000/login` returns `200 OK`.
 
 ## 7. Burgan: Apache vhost + Let's Encrypt SAN cert
 
-A single SAN cert covering the three exact names (apex + fox + solis)
-is cleaner than a wildcard: HTTP-01 issuance + renewal need only that
-Apache serves `/.well-known/acme-challenge/` on port 80, with no DNS
-gymnastics. The bundled vhost has the renewal-friendly :80 redirect
+A single SAN cert covering the four exact names (apex + fox + solis +
+tools) is cleaner than a wildcard: HTTP-01 issuance + renewal need only
+that Apache serves `/.well-known/acme-challenge/` on port 80, with no
+DNS gymnastics. The bundled vhost has the renewal-friendly :80 redirect
 already wired up.
+
+> **The trade-off to remember:** because the names are explicit, every
+> new subdomain needs the cert reissued with an extra `-d`. DNS is
+> already handled by a wildcard `*.smartenergylab.software` A record,
+> so a new name resolves immediately — which makes it easy to think the
+> subdomain is live when it is in fact serving the wrong certificate.
+> Verify with the `openssl` command at the end of this step.
 
 Install the vhost file — but **don't enable it yet**, because the
 SSL cert it points at doesn't exist on burgan yet:
@@ -310,7 +319,7 @@ sudo a2ensite 000-default 2>/dev/null || true
 sudo systemctl restart apache2
 ```
 
-Issue the cert (one cert, three SANs, HTTP-01 via the default
+Issue the cert (one cert, four SANs, HTTP-01 via the default
 webroot):
 
 ```bash
@@ -318,8 +327,13 @@ sudo certbot certonly --webroot -w /var/www/html \
     -d smartenergylab.software \
     -d fox.smartenergylab.software \
     -d solis.smartenergylab.software \
+    -d tools.smartenergylab.software \
     --agree-tos --no-eff-email -m you@example.com
 ```
+
+Re-run that exact command (adding `--expand` if certbot asks) whenever
+you add a subdomain to an existing cert; certbot rewrites the renewal
+config so future renewals keep all the names.
 
 Verify the cert landed, then enable our vhost:
 
@@ -341,12 +355,19 @@ Check:
 curl -sI https://smartenergylab.software/login            # 200
 curl -sI https://fox.smartenergylab.software/             # 302 → /login (proxied via burgan-portal)
 curl -sI https://solis.smartenergylab.software/           # 302 → /login
+curl -sI https://tools.smartenergylab.software/           # 200 (public — must NOT redirect to /login)
+
+# Confirm the cert actually names all four hosts — a wildcard DNS record
+# will happily resolve a subdomain the certificate doesn't cover.
+echo | openssl s_client -connect smartenergylab.software:443 \
+    -servername smartenergylab.software 2>/dev/null \
+  | openssl x509 -noout -ext subjectAltName
 ```
 
-Auto-renewal: `certbot renew` re-uses the DNS-01 method recorded in
-`/etc/letsencrypt/renewal/smartenergylab.software.conf`. If you're
-using a non-API DNS provider, schedule a calendar reminder for the
-90-day mark.
+Auto-renewal: `certbot renew` re-uses the HTTP-01 webroot method
+recorded in `/etc/letsencrypt/renewal/smartenergylab.software.conf`,
+which needs no DNS provider API — the `/.well-known/acme-challenge/`
+alias in each :80 vhost is what keeps it working.
 
 ---
 
@@ -399,13 +420,30 @@ sudo tail -f /var/log/apache2/smartenergylab-*.log
 ```
 
 ```bash
-# Re-deploy after a code change
-rsync -avz --exclude '.git' --exclude 'venv' --exclude 'config.py' \
+# Re-deploy after a code change — from another machine
+rsync -avz --exclude '.git' --exclude 'venv' --exclude 'config.py' --exclude '.claude' \
     ./ you@burgan:/tmp/burgan-portal/
 ssh you@burgan 'sudo rsync -av --chown=burgan-portal:burgan-portal \
     /tmp/burgan-portal/ /opt/burgan-portal/ && \
     sudo -u burgan-portal /opt/burgan-portal/venv/bin/pip install -r /opt/burgan-portal/requirements.txt && \
     sudo systemctl restart burgan-portal'
+
+# Re-deploy when you're already ON burgan (no /tmp hop, no ssh)
+sudo rsync -av --chown=burgan-portal:burgan-portal \
+    --exclude '.git' --exclude 'venv' --exclude 'config.py' \
+    --exclude '.claude' --exclude '__pycache__' \
+    ./ /opt/burgan-portal/
+sudo systemctl restart burgan-portal
+```
+
+**The Apache vhost is NOT covered by either command.** It ships in this
+repo but lives at `/etc/apache2/sites-available/`, so a vhost change
+needs a second, explicit step — and copying it from `/opt` only works
+*after* the rsync above has refreshed `/opt`:
+
+```bash
+sudo cp /opt/burgan-portal/apache/smartenergylab.conf /etc/apache2/sites-available/
+sudo apache2ctl configtest && sudo systemctl reload apache2
 ```
 
 ---
@@ -487,6 +525,22 @@ listings.
 | Password reset emails not arriving | Check Gmail's "less secure apps" + that you used an **app password**, not your account password. Gmail will reject non-app-password SMTP from a server. |
 | Browser stuck at `https://smartenergylab.software/login?next=https://fox...` after clicking a card | You're not logged in. Sign in first. |
 | `sudo wg show` shows no latest handshake on a peer | UDP ListenPort isn't reaching burgan, or keys don't match. See "Lessons from first deploy" below. |
+| `certbot` fails with `unauthorized` / "Invalid response from **https**://…/.well-known/acme-challenge/…" — a 404 on the apex, or a login page on `fox.`/`solis.` | The challenge is being redirected to HTTPS and then proxied into Flask. Note the `https` in certbot's URL — that's the tell. Every `:443` vhost needs `ProxyPass /.well-known/acme-challenge/ !` **before** `ProxyPass /`, or ProxyPass wins over the Alias. Diagnose with the probe below. |
+| A new subdomain resolves but the browser reports a certificate error | DNS is a wildcard, the cert is not — it names each host explicitly. Reissue with an extra `-d` (README §7). |
+| Code change appears to have no effect | You edited the working tree, not `/opt/burgan-portal`. Nothing takes effect until you rsync **and** restart; vhost changes need a separate `cp` to `/etc/apache2/`. |
+
+Before spending a certbot attempt (Let's Encrypt rate-limits failures),
+prove the challenge path is served as a plain file on **every** name —
+each must print `ok`, with no redirect and no HTML:
+
+```bash
+sudo mkdir -p /var/www/html/.well-known/acme-challenge
+echo ok | sudo tee /var/www/html/.well-known/acme-challenge/probe >/dev/null
+for h in smartenergylab.software fox.smartenergylab.software \
+         solis.smartenergylab.software tools.smartenergylab.software; do
+  printf '%-32s %s\n' "$h" "$(curl -sS "http://$h/.well-known/acme-challenge/probe")"
+done
+```
 
 ## Lessons from first deploy (read this before re-doing on a new host)
 

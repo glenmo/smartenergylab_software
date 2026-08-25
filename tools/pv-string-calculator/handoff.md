@@ -59,34 +59,35 @@ static/
 
 ## Where it's served
 
-The file sits in the Flask app's `static/` folder, so once deployed it is served by
-gunicorn at:
+The public URL is its own subdomain:
 
-    https://smartenergylab.software/static/string-calculator.html
+    https://tools.smartenergylab.software/
 
-No login required: the portal's `before_request` host-routing hook only gates the
-proxied inverter subdomains (`fox.`, `solis.`), and the apex `/` view enforces its own
-login — Flask's built-in `/static/` route is untouched by either, so the calculator is
-public by design. (There is no Apache vhost for `burgan.arachnoid.net.au` itself; the
-smartenergylab.software vhost on burgan is the front door.)
+with `https://tools.smartenergylab.software/string-calculator` as an alias, so a
+tools index can take over `/` later without breaking links already handed out.
 
-No systemd restart is needed for a static file — gunicorn reads it from disk per
-request.
+No login required, and that is enforced structurally rather than by omission.
+`toolsite.py` handles the `tools.` host from `app.py`'s `route_by_host` hook, and
+that branch runs **before** the proxy branch, so a tools page can never reach
+`auth_gate()`. It serves files from `static/` through an explicit allow-list
+(`TOOLS`), so unmapped paths 404 rather than exposing the rest of `static/`.
 
-### Optional: a nicer URL
+The file also remains reachable at `https://smartenergylab.software/static/string-calculator.html`
+via Flask's built-in static route — harmless, but `tools.` is the URL to publish.
 
-For `https://smartenergylab.software/tools/string-calculator` add this to the portal
-blueprint in `app.py` (it stays public — no `login_required`):
+Two things this needs that a plain static file wouldn't:
 
-```python
-from flask import send_from_directory
+- **an Apache vhost** for `tools.smartenergylab.software` (in `apache/smartenergylab.conf`,
+  §4) — same `ProxyPreserveHost` → `127.0.0.1:8000` pattern as the other three;
+- **a gunicorn restart** after `toolsite.py` or `app.py` changes. Editing only the
+  built HTML still needs no restart — gunicorn reads it from disk per request.
 
-@portal_bp.route("/tools/string-calculator")
-def string_calculator():
-    return send_from_directory("static", "string-calculator.html")
-```
+DNS and TLS need no work: `*.smartenergylab.software` already has a wildcard A record
+pointing at burgan, and the Let's Encrypt cert is a wildcard covering every subdomain.
 
-Then `sudo systemctl restart burgan-portal`.
+**Do not add `tools` to `UPSTREAMS`.** Those entries are reverse-proxy targets and are
+gated by `auth_gate()`; putting `tools` there would both break the page (there's no
+upstream to reach) and put a deliberately-public tool behind a login.
 
 ### Optional: link it from the portal page
 
@@ -99,7 +100,8 @@ It rides along with the normal deploy flow from the README (§2) — rsync the r
 `/tmp/burgan-portal/` and sync into `/opt/burgan-portal/`. The new files land in
 `static/` and `tools/` automatically.
 
-Quick one-off deploy of just this file (from your machine, repo root):
+Quick one-off deploy of just the built page (from your machine, repo root) — use this
+when you've only rebuilt the HTML and the routing is already live:
 
 ```bash
 scp static/string-calculator.html you@burgan.arachnoid.net.au:/tmp/
@@ -108,9 +110,9 @@ ssh you@burgan.arachnoid.net.au \
      /tmp/string-calculator.html /opt/burgan-portal/static/'
 ```
 
-Check: open https://smartenergylab.software/static/string-calculator.html — the
-defaults (a 550 W module on a 600 V / MPPT 90–560 V inverter at −5 °C) should
-immediately show **"3 – 11 modules"** with all six checks MET.
+Check: open https://tools.smartenergylab.software/ — the defaults (a 550 W module on a
+600 V / MPPT 90–560 V inverter at −5 °C) should immediately show **"3 – 11 modules"**
+with all six checks MET.
 
 ## Making changes
 

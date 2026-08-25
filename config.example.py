@@ -58,6 +58,18 @@ UPSTREAMS = {
 }
 
 # ---------------------------------------------------------------------------
+# Public tools subdomain
+# ---------------------------------------------------------------------------
+# <TOOLS_SUBDOMAIN>.smartenergylab.software serves the free static tools
+# (currently the PV string calculator) straight out of static/, with NO
+# login — see toolsite.py. Deliberately NOT an entry in UPSTREAMS: those
+# are gated by auth_gate(), and these pages are public by design.
+#
+# The default is "tools", so this key only needs setting if you want a
+# different label. Whatever you pick needs a matching Apache vhost.
+TOOLS_SUBDOMAIN = "tools"
+
+# ---------------------------------------------------------------------------
 # SMTP — Gmail with an app password
 # Create at: https://myaccount.google.com/apppasswords
 # ---------------------------------------------------------------------------
