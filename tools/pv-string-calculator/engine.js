@@ -45,11 +45,70 @@ function table41Factor(tMin) {
    iscMpptMax                max short-circuit current per MPPT, A (optional)
    nStrings                  parallel strings on the MPPT (default 1)
    nProposed                 proposed modules per string (optional)
+   bifacial                  bool, default false — apply the K_I current factor
+   kiMethod                  'roof' | 'bnpi' | 'sim' (Appendix J c / b / a)
+   iscBnpi                   module Isc at BNPI, A (for kiMethod 'bnpi')
+   kiSim                     K_I from simulation (for kiMethod 'sim')
 */
 function calcString(inp) {
   var r = { warnings: [], errors: [], checks: [] };
   var tMin = inp.tMin, tCellMax = (inp.tCellMax == null ? 70 : inp.tCellMax);
   var nStrings = inp.nStrings || 1;
+
+  /* --- bifaciality current factor K_I ---
+     AS/NZS 5033:2021 Clause 3.3.3.1 and Appendix J (normative).
+     K_I is the ratio of the maximum bifacial short-circuit current, allowing
+     for all site factors, to the monofacial front-face Isc at STC, so that
+
+         I_STRING_MAX = 1.25 × K_I × I_SC_MOD
+
+     Bifaciality affects CURRENTS ONLY. No voltage calculation below is
+     touched — the standard applies K_I to current alone.
+
+     Computed first so that incomplete bifacial input short-circuits the whole
+     calculation, the same way an out-of-range Table 4.1 temperature does. */
+  r.ki = 1;
+  r.kiMethod = null;
+  r.kiSource = null;
+  if (inp.bifacial) {
+    var km = inp.kiMethod || 'roof';
+    r.kiMethod = km;
+    if (km === 'bnpi') {
+      /* Appendix J(b): from the datasheet Isc at the bifacial nameplate
+         irradiance condition — 1000 W/m² front + 135 W/m² rear (Clause 1.3.3). */
+      if (inp.iscBnpi == null || isNaN(inp.iscBnpi) || inp.iscBnpi <= 0 ||
+          inp.isc == null || isNaN(inp.isc) || inp.isc <= 0) {
+        r.errors.push('Enter the module I<sub>sc</sub> at BNPI (and the STC I<sub>sc</sub>) to determine K_I.');
+        return r;
+      }
+      r.ki = inp.iscBnpi / inp.isc;
+      r.kiSource = 'I<sub>sc</sub> BNPI / I<sub>sc</sub>';
+      if (inp.iscBnpi < inp.isc) {
+        r.warnings.push('I<sub>sc</sub> at BNPI is below the front-face STC I<sub>sc</sub> — check the datasheet.');
+      }
+    } else if (km === 'sim') {
+      /* Appendix J(a): K_I from a simulation accounting for albedo, location,
+         orientation, shading, row spacing, bifacial factor and mismatch. */
+      if (inp.kiSim == null || isNaN(inp.kiSim) || inp.kiSim <= 0) {
+        r.errors.push('Enter the simulated K_I factor to calculate.');
+        return r;
+      }
+      r.ki = inp.kiSim;
+      r.kiSource = 'from simulation';
+      if (inp.kiSim < 1) {
+        r.warnings.push('A simulated K_I below 1 means the bifacial gain is negative — check the simulation.');
+      }
+    } else {
+      /* Appendix J(c): modules close and parallel to a roof see very limited
+         rear-face irradiance, so no bifacial current uplift is applied. */
+      r.ki = 1;
+      r.kiSource = 'close-parallel roof mounting';
+    }
+    if (r.ki > 1.35) {
+      r.warnings.push('K_I of ' + r.ki.toFixed(2) +
+        ' is unusually high — double-check the datasheet or simulation before relying on it.');
+    }
+  }
 
   /* --- cold open-circuit voltage per module --- */
   if (inp.method === 'table') {
@@ -75,9 +134,17 @@ function calcString(inp) {
 
   /* --- currents --- */
   var a = (inp.alphaIsc == null || isNaN(inp.alphaIsc)) ? 0 : inp.alphaIsc;
+  /* iscHot stays the monofacial front-face figure; K_I is applied where the
+     two candidate design currents are compared, so both terms are scaled. */
   r.iscHot = inp.isc * (1 + (a / 100) * (tCellMax - 25));
-  r.iscDesign = Math.max(inp.isc * 1.25, r.iscHot); /* AS/NZS 5033 1.25 × Isc minimum */
-  r.iStringOp = inp.imp || 0;
+  /* AS/NZS 5033 1.25 × Isc minimum, × K_I per Clause 3.3.3.1. With K_I = 1
+     (monofacial, or Appendix J(c) roof mounting) this is exactly the
+     monofacial result. */
+  r.iscDesign = Math.max(inp.isc * 1.25 * r.ki, r.iscHot * r.ki);
+  /* K_I is defined for Isc. Applying it to Imp for the inverter max-input-
+     current check is a conservative engineering extension, not a requirement
+     of the clause. */
+  r.iStringOp = (inp.imp || 0) * r.ki;
 
   /* --- string length limits --- */
   r.nMaxVoc  = Math.floor(inp.vInvMax / r.vocCold);
@@ -92,13 +159,25 @@ function calcString(inp) {
       ' modules the string stays below the DC limit but can drift out of the tracking window in cold weather.');
   }
 
-  /* --- parallel-string current checks --- */
+  /* --- parallel-string current checks ---
+     With K_I = 1 the detail strings are byte-identical to the monofacial
+     originals; the K_I terms only appear once bifaciality is in play. */
+  var kiTerm = (r.ki === 1) ? '' : r.ki.toFixed(2) + ' × ';
+  var iscArith;
+  if (r.ki === 1) {
+    iscArith = nStrings + ' × ' + r.iscDesign.toFixed(2);
+  } else if (inp.isc * 1.25 >= r.iscHot) {
+    iscArith = nStrings + ' × 1.25 × ' + kiTerm + inp.isc.toFixed(2);
+  } else {
+    /* the temperature-corrected floor governs */
+    iscArith = nStrings + ' × ' + kiTerm + r.iscHot.toFixed(2) + ' hot';
+  }
   if (inp.iscMpptMax != null && !isNaN(inp.iscMpptMax) && inp.iscMpptMax > 0) {
     r.checks.push({
       id: 'isc', label: 'Short-circuit current × ' + nStrings + ' string' + (nStrings > 1 ? 's' : ''),
       value: nStrings * r.iscDesign, limit: inp.iscMpptMax, unit: 'A', cmp: '≤',
       pass: nStrings * r.iscDesign <= inp.iscMpptMax,
-      detail: nStrings + ' × ' + r.iscDesign.toFixed(2) + ' A design Isc vs ' + inp.iscMpptMax + ' A MPPT rating'
+      detail: iscArith + ' A design Isc vs ' + inp.iscMpptMax + ' A MPPT rating'
     });
   }
   if (inp.iMpptMax != null && !isNaN(inp.iMpptMax) && inp.iMpptMax > 0 && r.iStringOp > 0) {
@@ -106,7 +185,10 @@ function calcString(inp) {
       id: 'imp', label: 'Operating current × ' + nStrings + ' string' + (nStrings > 1 ? 's' : ''),
       value: nStrings * r.iStringOp, limit: inp.iMpptMax, unit: 'A', cmp: '≤',
       pass: nStrings * r.iStringOp <= inp.iMpptMax,
-      detail: nStrings + ' × ' + r.iStringOp.toFixed(2) + ' A Imp vs ' + inp.iMpptMax + ' A max input current'
+      detail: (r.ki === 1
+        ? nStrings + ' × ' + r.iStringOp.toFixed(2)
+        : nStrings + ' × ' + kiTerm + (inp.imp || 0).toFixed(2)) +
+        ' A Imp vs ' + inp.iMpptMax + ' A max input current'
     });
   }
 

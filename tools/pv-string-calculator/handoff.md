@@ -25,8 +25,8 @@ for any proposed string length, per the AS/NZS 5033:2021 methodology:
 | Max modules (absolute) | `floor(inverter max DC input / cold Voc)` |
 | Max modules (MPPT tracking) | `floor(MPPT max / cold Vmp)` |
 | Min modules | `ceil(MPPT min / hot Vmp)` |
-| Design I<sub>sc</sub> per string | `max(1.25 × Isc, Isc corrected to Tcell,max via αIsc)` |
-| Current checks | strings × design I<sub>sc</sub> ≤ inverter I<sub>sc</sub> rating; strings × I<sub>mp</sub> ≤ max input current |
+| Design I<sub>sc</sub> per string | `max(1.25 × K_I × Isc, K_I × Isc corrected to Tcell,max via αIsc)` — K_I = 1 unless the module is bifacial |
+| Current checks | strings × design I<sub>sc</sub> ≤ inverter I<sub>sc</sub> rating; strings × K_I × I<sub>mp</sub> ≤ max input current |
 | Proposed-string checks | cold string V<sub>oc</sub> ≤ max DC input; hot string V<sub>mp</sub> ≥ MPPT min (and ≥ start-up voltage); cold string V<sub>mp</sub> ≤ MPPT max |
 
 The Table 4.1 factor bands (25 °C+ → 1.00 down to −40 °C → 1.25) are embedded in
@@ -38,6 +38,44 @@ current printed copy of AS/NZS 5033:2021** — the page already carries a
 Non-integer minimum temperatures fall into the next colder band (e.g. −5.5 °C → the
 −10 to −6 °C band, factor 1.14), which is the conservative reading.
 
+### Bifacial modules
+
+Per AS/NZS 5033:2021 **Clause 3.3.3.1** and **Appendix J (normative)**, bifaciality
+raises the maximum string current:
+
+    I_STRING_MAX = 1.25 × K_I × I_SC_MOD
+
+K_I is the ratio of the maximum bifacial short-circuit current (allowing for all site
+factors) to the monofacial front-face I<sub>sc</sub> at STC. Appendix J gives three ways
+to determine it, and the UI offers exactly those three:
+
+| Method | K_I | Basis |
+|---|---|---|
+| Close-parallel roof mounting | `1` | Appendix J(c) — modules close and parallel to a tiled roof see very limited rear-face irradiance |
+| Datasheet BNPI I<sub>sc</sub> | `Isc_BNPI / Isc` | Appendix J(b) — where no simulation data exists. BNPI = bifacial nameplate irradiance, 1000 W/m² front + 135 W/m² rear (Clause 1.3.3) |
+| Simulation | entered directly | Appendix J(a) — accounts for albedo, location, orientation, shading, row spacing, bifacial factor and mismatch |
+
+Where both faces can see irradiance above 400 W/m² (fence-type/vertical installs, open
+racks in snowy areas), the standard recommends determining K_I by simulation. The UI
+says so under the control.
+
+Two things to hold onto when changing this:
+
+- **K_I scales current only.** The standard does not correct voltage for bifaciality,
+  so no V<sub>oc</sub>/V<sub>mp</sub> calculation touches `ki`. Don't "fix" that.
+- **K_I is defined for I<sub>sc</sub>.** Applying it to I<sub>mp</sub> for the inverter
+  max-input-current check is a deliberate conservative extension, not a clause
+  requirement — it is flagged as such in a comment in `engine.js`.
+
+Monofacial is the default and K_I = 1 is a strict no-op: `test.js` asserts the roof
+method and `bifacial: false` produce identical `iscDesign`, `nMax` and `nMin`, and that
+the check detail strings are byte-identical.
+
+Engine inputs: `bifacial` (bool), `kiMethod` (`'roof' | 'bnpi' | 'sim'`), `iscBnpi`,
+`kiSim`. Missing `iscBnpi`/`kiSim` is treated as incomplete input (the calculation
+short-circuits, exactly like a temperature below −40 °C on the Table 4.1 method).
+Warnings fire for `Isc_BNPI < Isc`, a simulated K_I below 1, and any K_I above 1.35.
+
 ## Files
 
 ```
@@ -46,9 +84,10 @@ tools/pv-string-calculator/
 ├── engine.js       calculation engine — the single source of truth for the maths
 ├── ui.html         page template (markup + CSS + UI wiring); contains an
 │                   /*__ENGINE__*/ placeholder where engine.js is inlined
-├── test.js         engine unit tests — run with `node test.js` (23 checks:
+├── test.js         engine unit tests — run with `node test.js` (57 checks:
 │                   Table 4.1 band edges, a hand-calculated worked example,
-│                   table-vs-coefficient methods, deliberate fail cases)
+│                   table-vs-coefficient methods, deliberate fail cases, and the
+│                   three Appendix J bifacial K_I paths)
 └── build.py        inlines engine.js into ui.html, wraps it in a full HTML
                     document, writes ../../static/string-calculator.html
 
@@ -82,8 +121,10 @@ Two things this needs that a plain static file wouldn't:
 - **a gunicorn restart** after `toolsite.py` or `app.py` changes. Editing only the
   built HTML still needs no restart — gunicorn reads it from disk per request.
 
-DNS and TLS need no work: `*.smartenergylab.software` already has a wildcard A record
-pointing at burgan, and the Let's Encrypt cert is a wildcard covering every subdomain.
+DNS needs no work — `*.smartenergylab.software` is a wildcard A record pointing at
+burgan. **TLS is not a wildcard**, though: the Let's Encrypt cert is a SAN cert naming
+each host explicitly, so a new subdomain resolves immediately while serving the wrong
+certificate until certbot is re-run with an extra `-d`. See README §7.
 
 **Do not add `tools` to `UPSTREAMS`.** Those entries are reverse-proxy targets and are
 gated by `auth_gate()`; putting `tools` there would both break the page (there's no
@@ -118,7 +159,7 @@ with all six checks MET.
 
 1. Edit `engine.js` (maths) and/or `ui.html` (layout, copy, defaults, colours).
 2. Rebuild: `python3 build.py` (from `tools/pv-string-calculator/`).
-3. Re-test: `node test.js` — must end `23 passed, 0 failed` (add tests when you add
+3. Re-test: `node test.js` — must end `57 passed, 0 failed` (add tests when you add
    maths; every formula change should get a hand-calculated expectation).
 4. Deploy as above.
 

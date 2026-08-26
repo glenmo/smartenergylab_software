@@ -160,6 +160,12 @@
   }
   .seg button[aria-pressed="true"] { background: var(--card); color: var(--accent-deep); box-shadow: var(--shadow); }
   .seg button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .seg.seg3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 460px) { .seg.seg3 { grid-template-columns: 1fr; } }
+  .hint.clause { margin-top: 2px; }
+  .hint.clause b { color: var(--ink-soft); font-weight: 600; }
+  .hint.note { margin-top: 8px; padding: 8px 10px; border-radius: 7px;
+    background: var(--accent-tint); color: var(--accent-deep); }
 
   /* ---------- verdict ---------- */
   .verdict { text-align: left; }
@@ -310,6 +316,33 @@
         </div>
         <p class="hint" id="coeff-hint">Enter coefficients exactly as the datasheet shows them, e.g. −0.25. γ is used for hot-weather V<sub>mp</sub>; leave it blank to fall back to β.</p>
         <p class="hint" id="table-hint" hidden>Table 4.1 applies to crystalline and multi-crystalline silicon modules when the V<sub>oc</sub> temperature coefficient is not available. The factor is picked automatically from the lowest expected temperature below.</p>
+
+        <h2 style="margin-top:18px">Module type</h2>
+        <div class="seg" role="group" aria-label="Module type">
+          <button type="button" id="b-mono" aria-pressed="true">Monofacial</button>
+          <button type="button" id="b-bi" aria-pressed="false">Bifacial module</button>
+        </div>
+
+        <div id="bifacial-block" hidden>
+          <div class="seg seg3" role="group" aria-label="Method for determining the bifacial current factor K sub I">
+            <button type="button" id="k-roof" aria-pressed="true">Close-parallel roof</button>
+            <button type="button" id="k-bnpi" aria-pressed="false">Datasheet BNPI I<sub>sc</sub></button>
+            <button type="button" id="k-sim" aria-pressed="false">Simulation</button>
+          </div>
+          <div class="grid2" id="k-bnpi-field" hidden>
+            <div class="field span2"><label for="iscbnpi">I<sub>sc</sub> at BNPI <span class="unit">A</span></label><input type="number" id="iscbnpi" step="0.01" value="15.30" inputmode="decimal"></div>
+          </div>
+          <div class="grid2" id="k-sim-field" hidden>
+            <div class="field span2"><label for="kisim">K<sub>I</sub> factor <span class="unit">ratio · from simulation</span></label><input type="number" id="kisim" step="0.01" value="1.15" inputmode="decimal"></div>
+          </div>
+          <p class="hint clause">
+            Bifaciality raises <b>current only</b> — string voltages are unchanged. Maximum string current becomes 1.25&nbsp;×&nbsp;K<sub>I</sub>&nbsp;×&nbsp;I<sub>sc</sub> (Clause&nbsp;3.3.3.1).<br>
+            <b>Close-parallel roof</b> — modules close and parallel to a tiled roof see very limited rear-face light, so K<sub>I</sub>&nbsp;=&nbsp;1. (Appendix&nbsp;J(c))<br>
+            <b>Datasheet BNPI I<sub>sc</sub></b> — where no simulation data exists, K<sub>I</sub>&nbsp;=&nbsp;I<sub>sc&nbsp;BNPI</sub>&nbsp;/&nbsp;I<sub>sc</sub>. BNPI is the bifacial nameplate irradiance condition: 1000&nbsp;W/m² front + 135&nbsp;W/m² rear (Clause&nbsp;1.3.3). (Appendix&nbsp;J(b))<br>
+            <b>Simulation</b> — K<sub>I</sub> from a simulation accounting for albedo, location, orientation, shading, row spacing, bifacial factor and mismatch. (Appendix&nbsp;J(a))
+          </p>
+          <p class="hint note">Where both faces can see irradiance above 400&nbsp;W/m² — fence-type or vertical installations, and open racks in snowy areas — the standard recommends determining K<sub>I</sub> by simulation.</p>
+        </div>
       </section>
 
       <section class="card" aria-labelledby="h-site">
@@ -383,7 +416,7 @@
       </details>
 
       <footer class="fine">
-        Guidance only. String sizing must be verified by a licensed designer against the current module and inverter datasheets and AS/NZS&nbsp;5033:2021 / AS/NZS&nbsp;4777 before installation. Design short-circuit current is taken as the greater of 1.25&nbsp;×&nbsp;I<sub>sc</sub> and temperature-corrected I<sub>sc</sub>.
+        Guidance only. String sizing must be verified by a licensed designer against the current module and inverter datasheets and AS/NZS&nbsp;5033:2021 / AS/NZS&nbsp;4777 before installation. Design short-circuit current is taken as the greater of 1.25&nbsp;×&nbsp;I<sub>sc</sub> and temperature-corrected I<sub>sc</sub>, each scaled by the bifaciality factor K<sub>I</sub> for bifacial modules per AS/NZS&nbsp;5033:2021 Clause&nbsp;3.3.3.1 and Appendix&nbsp;J.
         A free tool by <a href="https://solarplus.co" rel="noopener">SolarPlus</a> — solar design, sales &amp; CRM software.
       </footer>
     </div>
@@ -438,11 +471,70 @@ function table41Factor(tMin) {
    iscMpptMax                max short-circuit current per MPPT, A (optional)
    nStrings                  parallel strings on the MPPT (default 1)
    nProposed                 proposed modules per string (optional)
+   bifacial                  bool, default false — apply the K_I current factor
+   kiMethod                  'roof' | 'bnpi' | 'sim' (Appendix J c / b / a)
+   iscBnpi                   module Isc at BNPI, A (for kiMethod 'bnpi')
+   kiSim                     K_I from simulation (for kiMethod 'sim')
 */
 function calcString(inp) {
   var r = { warnings: [], errors: [], checks: [] };
   var tMin = inp.tMin, tCellMax = (inp.tCellMax == null ? 70 : inp.tCellMax);
   var nStrings = inp.nStrings || 1;
+
+  /* --- bifaciality current factor K_I ---
+     AS/NZS 5033:2021 Clause 3.3.3.1 and Appendix J (normative).
+     K_I is the ratio of the maximum bifacial short-circuit current, allowing
+     for all site factors, to the monofacial front-face Isc at STC, so that
+
+         I_STRING_MAX = 1.25 × K_I × I_SC_MOD
+
+     Bifaciality affects CURRENTS ONLY. No voltage calculation below is
+     touched — the standard applies K_I to current alone.
+
+     Computed first so that incomplete bifacial input short-circuits the whole
+     calculation, the same way an out-of-range Table 4.1 temperature does. */
+  r.ki = 1;
+  r.kiMethod = null;
+  r.kiSource = null;
+  if (inp.bifacial) {
+    var km = inp.kiMethod || 'roof';
+    r.kiMethod = km;
+    if (km === 'bnpi') {
+      /* Appendix J(b): from the datasheet Isc at the bifacial nameplate
+         irradiance condition — 1000 W/m² front + 135 W/m² rear (Clause 1.3.3). */
+      if (inp.iscBnpi == null || isNaN(inp.iscBnpi) || inp.iscBnpi <= 0 ||
+          inp.isc == null || isNaN(inp.isc) || inp.isc <= 0) {
+        r.errors.push('Enter the module I<sub>sc</sub> at BNPI (and the STC I<sub>sc</sub>) to determine K_I.');
+        return r;
+      }
+      r.ki = inp.iscBnpi / inp.isc;
+      r.kiSource = 'I<sub>sc</sub> BNPI / I<sub>sc</sub>';
+      if (inp.iscBnpi < inp.isc) {
+        r.warnings.push('I<sub>sc</sub> at BNPI is below the front-face STC I<sub>sc</sub> — check the datasheet.');
+      }
+    } else if (km === 'sim') {
+      /* Appendix J(a): K_I from a simulation accounting for albedo, location,
+         orientation, shading, row spacing, bifacial factor and mismatch. */
+      if (inp.kiSim == null || isNaN(inp.kiSim) || inp.kiSim <= 0) {
+        r.errors.push('Enter the simulated K_I factor to calculate.');
+        return r;
+      }
+      r.ki = inp.kiSim;
+      r.kiSource = 'from simulation';
+      if (inp.kiSim < 1) {
+        r.warnings.push('A simulated K_I below 1 means the bifacial gain is negative — check the simulation.');
+      }
+    } else {
+      /* Appendix J(c): modules close and parallel to a roof see very limited
+         rear-face irradiance, so no bifacial current uplift is applied. */
+      r.ki = 1;
+      r.kiSource = 'close-parallel roof mounting';
+    }
+    if (r.ki > 1.35) {
+      r.warnings.push('K_I of ' + r.ki.toFixed(2) +
+        ' is unusually high — double-check the datasheet or simulation before relying on it.');
+    }
+  }
 
   /* --- cold open-circuit voltage per module --- */
   if (inp.method === 'table') {
@@ -468,9 +560,17 @@ function calcString(inp) {
 
   /* --- currents --- */
   var a = (inp.alphaIsc == null || isNaN(inp.alphaIsc)) ? 0 : inp.alphaIsc;
+  /* iscHot stays the monofacial front-face figure; K_I is applied where the
+     two candidate design currents are compared, so both terms are scaled. */
   r.iscHot = inp.isc * (1 + (a / 100) * (tCellMax - 25));
-  r.iscDesign = Math.max(inp.isc * 1.25, r.iscHot); /* AS/NZS 5033 1.25 × Isc minimum */
-  r.iStringOp = inp.imp || 0;
+  /* AS/NZS 5033 1.25 × Isc minimum, × K_I per Clause 3.3.3.1. With K_I = 1
+     (monofacial, or Appendix J(c) roof mounting) this is exactly the
+     monofacial result. */
+  r.iscDesign = Math.max(inp.isc * 1.25 * r.ki, r.iscHot * r.ki);
+  /* K_I is defined for Isc. Applying it to Imp for the inverter max-input-
+     current check is a conservative engineering extension, not a requirement
+     of the clause. */
+  r.iStringOp = (inp.imp || 0) * r.ki;
 
   /* --- string length limits --- */
   r.nMaxVoc  = Math.floor(inp.vInvMax / r.vocCold);
@@ -485,13 +585,25 @@ function calcString(inp) {
       ' modules the string stays below the DC limit but can drift out of the tracking window in cold weather.');
   }
 
-  /* --- parallel-string current checks --- */
+  /* --- parallel-string current checks ---
+     With K_I = 1 the detail strings are byte-identical to the monofacial
+     originals; the K_I terms only appear once bifaciality is in play. */
+  var kiTerm = (r.ki === 1) ? '' : r.ki.toFixed(2) + ' × ';
+  var iscArith;
+  if (r.ki === 1) {
+    iscArith = nStrings + ' × ' + r.iscDesign.toFixed(2);
+  } else if (inp.isc * 1.25 >= r.iscHot) {
+    iscArith = nStrings + ' × 1.25 × ' + kiTerm + inp.isc.toFixed(2);
+  } else {
+    /* the temperature-corrected floor governs */
+    iscArith = nStrings + ' × ' + kiTerm + r.iscHot.toFixed(2) + ' hot';
+  }
   if (inp.iscMpptMax != null && !isNaN(inp.iscMpptMax) && inp.iscMpptMax > 0) {
     r.checks.push({
       id: 'isc', label: 'Short-circuit current × ' + nStrings + ' string' + (nStrings > 1 ? 's' : ''),
       value: nStrings * r.iscDesign, limit: inp.iscMpptMax, unit: 'A', cmp: '≤',
       pass: nStrings * r.iscDesign <= inp.iscMpptMax,
-      detail: nStrings + ' × ' + r.iscDesign.toFixed(2) + ' A design Isc vs ' + inp.iscMpptMax + ' A MPPT rating'
+      detail: iscArith + ' A design Isc vs ' + inp.iscMpptMax + ' A MPPT rating'
     });
   }
   if (inp.iMpptMax != null && !isNaN(inp.iMpptMax) && inp.iMpptMax > 0 && r.iStringOp > 0) {
@@ -499,7 +611,10 @@ function calcString(inp) {
       id: 'imp', label: 'Operating current × ' + nStrings + ' string' + (nStrings > 1 ? 's' : ''),
       value: nStrings * r.iStringOp, limit: inp.iMpptMax, unit: 'A', cmp: '≤',
       pass: nStrings * r.iStringOp <= inp.iMpptMax,
-      detail: nStrings + ' × ' + r.iStringOp.toFixed(2) + ' A Imp vs ' + inp.iMpptMax + ' A max input current'
+      detail: (r.ki === 1
+        ? nStrings + ' × ' + r.iStringOp.toFixed(2)
+        : nStrings + ' × ' + kiTerm + (inp.imp || 0).toFixed(2)) +
+        ' A Imp vs ' + inp.iMpptMax + ' A max input current'
     });
   }
 
@@ -550,6 +665,8 @@ if (typeof module !== 'undefined' && module.exports) {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var method = 'coeff';
+  var bifacial = false;      /* default off — monofacial behaviour is unchanged */
+  var kiMethod = 'roof';
 
   function num(id) {
     var v = parseFloat($(id).value);
@@ -582,6 +699,30 @@ if (typeof module !== 'undefined' && module.exports) {
   $('m-coeff').addEventListener('click', function () { setMethod('coeff'); });
   $('m-table').addEventListener('click', function () { setMethod('table'); });
 
+  /* bifacial module type + K_I method (AS/NZS 5033:2021 Appendix J) */
+  function setBifacial(on) {
+    bifacial = on;
+    $('b-mono').setAttribute('aria-pressed', !on);
+    $('b-bi').setAttribute('aria-pressed', on);
+    $('bifacial-block').hidden = !on;
+    recalc();
+  }
+  $('b-mono').addEventListener('click', function () { setBifacial(false); });
+  $('b-bi').addEventListener('click', function () { setBifacial(true); });
+
+  function setKiMethod(m) {
+    kiMethod = m;
+    $('k-roof').setAttribute('aria-pressed', m === 'roof');
+    $('k-bnpi').setAttribute('aria-pressed', m === 'bnpi');
+    $('k-sim').setAttribute('aria-pressed', m === 'sim');
+    $('k-bnpi-field').hidden = m !== 'bnpi';
+    $('k-sim-field').hidden = m !== 'sim';
+    recalc();
+  }
+  $('k-roof').addEventListener('click', function () { setKiMethod('roof'); });
+  $('k-bnpi').addEventListener('click', function () { setKiMethod('bnpi'); });
+  $('k-sim').addEventListener('click', function () { setKiMethod('sim'); });
+
   $('n-dec').addEventListener('click', function () { step(-1); });
   $('n-inc').addEventListener('click', function () { step(1); });
   function step(d) {
@@ -590,7 +731,7 @@ if (typeof module !== 'undefined' && module.exports) {
     recalc();
   }
 
-  ['voc','vmp','isc','imp','pmax','beta','alpha','gamma','tmin','tcell','vinvmax','vstart','vmpptmin','vmpptmax','impptmax','iscmpptmax','nstrings','nprop']
+  ['voc','vmp','isc','imp','pmax','beta','alpha','gamma','tmin','tcell','vinvmax','vstart','vmpptmin','vmpptmax','impptmax','iscmpptmax','nstrings','nprop','iscbnpi','kisim']
     .forEach(function (id) { $(id).addEventListener('input', recalc); });
 
   function chipLi(c) {
@@ -619,6 +760,8 @@ if (typeof module !== 'undefined' && module.exports) {
     if (vinvmax == null || vinvmax <= 0) missing.push('inverter max DC input');
     if (tmin == null) missing.push('lowest temperature');
     if (method === 'coeff' && beta == null) missing.push('β V<sub>oc</sub> coefficient');
+    if (bifacial && kiMethod === 'bnpi' && !(num('iscbnpi') > 0)) missing.push('I<sub>sc</sub> at BNPI');
+    if (bifacial && kiMethod === 'sim' && !(num('kisim') > 0)) missing.push('the K<sub>I</sub> factor');
     if (missing.length) {
       $('range-big').textContent = '–';
       $('range-big').className = 'big';
@@ -638,7 +781,9 @@ if (typeof module !== 'undefined' && module.exports) {
       vInvMax: vinvmax, vMpptMin: num('vmpptmin') || 0, vMpptMax: num('vmpptmax') || 0,
       vStart: num('vstart'), iMpptMax: num('impptmax'), iscMpptMax: num('iscmpptmax'),
       nStrings: Math.max(1, Math.round(num('nstrings') || 1)),
-      nProposed: num('nprop')
+      nProposed: num('nprop'),
+      bifacial: bifacial, kiMethod: kiMethod,
+      iscBnpi: num('iscbnpi'), kiSim: num('kisim')
     };
     var r = calcString(inp);
 
@@ -700,7 +845,9 @@ if (typeof module !== 'undefined' && module.exports) {
       method === 'table' ? '× ' + r.vocFactor.toFixed(2) + ' (' + r.vocBand + ')' : '× ' + r.vocFactor.toFixed(3)));
     cells.push(dcell('V<sub>mp</sub> hot / module', fmt(r.vmpHot, 1) + ' V', 'at ' + fmt(inp.tCellMax == null ? 70 : inp.tCellMax, 0) + ' °C cell'));
     cells.push(dcell('V<sub>mp</sub> cold / module', fmt(r.vmpCold, 1) + ' V', 'at ' + fmt(inp.tMin, 0) + ' °C'));
-    if (inp.isc > 0) cells.push(dcell('Design I<sub>sc</sub> / string', fmt(r.iscDesign, 2) + ' A', 'max of 1.25 × I<sub>sc</sub>, hot I<sub>sc</sub>'));
+    if (bifacial) cells.push(dcell('K<sub>I</sub> factor', fmt(r.ki, 2), r.kiSource || ''));
+    if (inp.isc > 0) cells.push(dcell('Design I<sub>sc</sub> / string', fmt(r.iscDesign, 2) + ' A',
+      'max of 1.25 × I<sub>sc</sub>, hot I<sub>sc</sub>' + (r.ki !== 1 ? ' · × K<sub>I</sub>' : '')));
     cells.push(dcell('Max by V<sub>oc</sub> limit', r.nMaxVoc + '', 'modules'));
     if (r.nMaxMppt != null) cells.push(dcell('Max in MPPT window', r.nMaxMppt + '', 'modules'));
     $('dgrid').innerHTML = cells.join('');
