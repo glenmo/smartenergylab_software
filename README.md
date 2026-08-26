@@ -9,7 +9,7 @@ auth gateway. Each monitored system is mirrored at its own subdomain:
 | `smartenergylab.software` | Login + system menu + forgot/reset | local Flask |
 | `fox.smartenergylab.software` | [fox_remote_monitoring](https://github.com/glenmo/fox_remote_monitoring) | desky.local (WireGuard 10.99.0.2) |
 | `solis.smartenergylab.software` | microgrid_remote_monitor | rubberduck.local (WireGuard 10.99.0.3) |
-| `tools.smartenergylab.software` | Free public tools — PV string calculator (**no login**) | local Flask, static files |
+| `tools.smartenergylab.software` | Free public tools — PV string calculator, bifacial-capable (**no login**) | local Flask, static files |
 
 ```
                               Internet
