@@ -107,7 +107,22 @@ sudo journalctl -u burgan-portal -f
 sudo tail -f /var/log/apache2/smartenergylab-*.log
 ```
 
-There is no test suite, linter, or build step.
+The Flask portal has no test suite, linter, or build step. The PV string calculator
+is the one exception — it has a build and its own tests:
+
+```bash
+cd tools/pv-string-calculator
+python3 build.py   # inlines engine.js into ui.html → ../../static/string-calculator.html
+node test.js       # engine maths vs AS/NZS 5033 worked examples; exits non-zero on any FAIL
+```
+
+`engine.js` is shared by both: `build.py` pastes it into `ui.html` at the
+`/*__ENGINE__*/` marker, and `test.js` `require()`s it via the guarded
+`module.exports` at the bottom — keep that guard, and keep all calculation logic in
+`engine.js` (not `ui.html`) so it stays under test. Commit the rebuilt
+`static/string-calculator.html` alongside source changes; that built file is what
+production serves. `tools/pv-string-calculator/handoff.md` documents the formulas,
+standard references, and bifacial (Appendix J) handling.
 
 ## Things that will bite you
 
