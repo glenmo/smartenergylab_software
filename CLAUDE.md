@@ -67,6 +67,10 @@ so a single login is shared across the apex and every subdomain.
 - Post-login `?next=` may be a local path or an https URL on a
   `SESSION_COOKIE_DOMAIN` subdomain (`auth._safe_next`), so deep links into gated
   subdomains survive the login. Anything else is ignored (no open redirect).
+- Favicons live in `static/icons/` and are served at the site root (`/favicon.ico`,
+  `/site.webmanifest`, …) by the first check in `route_by_host`, on every host except
+  the proxied ones (those keep their upstream's icons). Add a new icon file to
+  `ICON_FILES` in `app.py` too, or it 404s.
 - `toolsite.py` — the public `tools.` subdomain: an allow-list (`TOOLS`) mapping URL
   paths to files in `static/`, served with no login. Named `toolsite.py`, not
   `tools.py`, to avoid colliding with the `tools/` source directory.

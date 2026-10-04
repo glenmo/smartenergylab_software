@@ -19,7 +19,9 @@ Routing is host-aware:
 import logging
 import os
 
-from flask import Blueprint, Flask, redirect, render_template, request, url_for
+from flask import (
+    Blueprint, Flask, redirect, render_template, request, send_from_directory, url_for,
+)
 from flask_login import current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -61,6 +63,23 @@ def index():
 
 
 # ---------------------------------------------------------------------------
+# Favicons — browsers ask for these at the site root, and the web manifest
+# names root paths too, so they're served from static/icons/ at "/" on every
+# host this app renders itself. Proxied hosts keep their upstream's icons.
+# ---------------------------------------------------------------------------
+ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "icons")
+ICON_FILES = frozenset({
+    "favicon.ico", "favicon.svg", "favicon-16x16.png", "favicon-32x32.png",
+    "favicon-48x48.png", "favicon-96x96.png", "favicon-192x192.png",
+    "favicon-512x512.png", "apple-touch-icon.png", "site.webmanifest",
+})
+
+
+def serve_icon(name: str):
+    return send_from_directory(ICON_DIR, name, max_age=60 * 60 * 24 * 7)
+
+
+# ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
 def create_app():
@@ -92,6 +111,10 @@ def create_app():
     # ----- host-aware dispatch ------------------------------------------
     @app.before_request
     def route_by_host():
+        # Site icons, on every host except the proxied dashboards.
+        name = request.path.lstrip("/")
+        if name in ICON_FILES and not is_proxied_host(request.host):
+            return serve_icon(name)
         # Public tools subdomain — served locally from static/, no auth.
         # Checked before the proxy branch so a tools page can never be
         # sent through auth_gate().

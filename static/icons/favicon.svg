@@ -1,0 +1,31 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0e2f2a"/>
+      <stop offset="1" stop-color="#06201d"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#7CFFB2"/>
+      <stop offset="0.55" stop-color="#34E0A1"/>
+      <stop offset="1" stop-color="#16B89A"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34E0A1" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#34E0A1" stop-opacity="0.05"/>
+    </linearGradient>
+  </defs>
+
+  <!-- rounded app-icon background -->
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="6" y="6" width="500" height="500" rx="108" fill="none" stroke="url(#ring)" stroke-width="6"/>
+
+  <!-- lightning bolt -->
+  <path d="M300 54
+           L150 286
+           L242 286
+           L212 458
+           L372 226
+           L280 226
+           Z"
+        fill="url(#bolt)"/>
+</svg>
