@@ -31,7 +31,11 @@ vhosts to the same gunicorn on `127.0.0.1:8000`. Flask then decides what to do:
 - Otherwise (the apex domain) it falls through to the normal blueprint views
   (`portal_bp`, `auth_bp`).
 
-So `proxy.py` and `toolsite.py` are both reached through the request hook, not through
+- `monitor.` (`is_monitor_host`) is checked next, before the proxy branch. It is
+  served locally by `monitor.serve_monitor()`, which does its own login check
+  (and the optional `MONITOR_ALLOWED_EMAILS` allow-list). It is NOT in `UPSTREAMS`.
+
+So `proxy.py`, `toolsite.py` and `monitor.py` are all reached through the request hook, not through
 registered routes. Adding a subdomain means adding it to `UPSTREAMS` (authenticated
 mirror) or to `TOOLS` in `toolsite.py` (public static page) — not adding a route. The
 two are mutually exclusive: never put a public tool host in `UPSTREAMS`, because
@@ -52,6 +56,17 @@ so a single login is shared across the apex and every subdomain.
   `Location` redirects from the internal WireGuard IP to the public subdomain, strips
   hop-by-hop / stack-leaking headers, and buffers `text/html` responses to inject a
   fixed "← Portal" back-link before `</body>` (CSV/JSON stay streamed).
+- `monitor.py` + `templates/monitor.html` — the `monitor.` controlled-loads admin
+  page. `/api/state` fetches the public JSON on monitor.mooramoora.org.au (pignus:
+  `/api/soc`, `/api/solis/data`, `/api/sppro/data`, `/hotwater/api/state`,
+  `/comfort/api/current`, `/dacha/…`, `/studio/…`) in parallel, caches it for 10 s
+  per worker, and merges it in `build_state()`. The bus balance (demand, house solar,
+  generator ≥ 200 W on |SP Pro grid_w|) copies `templates/flow_diagram.html` in
+  microgrid_remote_monitor, so keep the two in step. Read-only; it switches nothing.
+  The page also serves `/static/` itself, since that host has no Flask static route.
+- Post-login `?next=` may be a local path or an https URL on a
+  `SESSION_COOKIE_DOMAIN` subdomain (`auth._safe_next`), so deep links into gated
+  subdomains survive the login. Anything else is ignored (no open redirect).
 - `toolsite.py` — the public `tools.` subdomain: an allow-list (`TOOLS`) mapping URL
   paths to files in `static/`, served with no login. Named `toolsite.py`, not
   `tools.py`, to avoid colliding with the `tools/` source directory.

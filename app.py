@@ -1,11 +1,13 @@
 """
 Smart Energy Lab portal — Flask entry point.
 
-One Flask app serves three subdomains via Apache mod_proxy:
+One Flask app serves these subdomains via Apache mod_proxy:
 
-    smartenergylab.software        portal + login + forgot/reset
-    fox.smartenergylab.software    reverse-proxied to fox-monitor on desky
-    solis.smartenergylab.software  reverse-proxied to microgrid on rubberduck
+    smartenergylab.software          portal + login + forgot/reset
+    fox.smartenergylab.software      reverse-proxied to fox-monitor on desky
+    solis.smartenergylab.software    reverse-proxied to microgrid on rubberduck
+    monitor.smartenergylab.software  controlled-loads admin page (monitor.py)
+    tools.smartenergylab.software    public static tools (toolsite.py)
 
 Routing is host-aware:
   - Apex domain → portal_bp / auth_bp views.
@@ -23,6 +25,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from auth import bp as auth_bp
 from extensions import csrf, db, limiter, login_manager
+from monitor import is_monitor_host, serve_monitor
 from proxy import auth_gate, forward, is_proxied_host
 from toolsite import is_tools_host, serve_tool
 
@@ -48,6 +51,9 @@ def index():
          "blurb": "Hybrid inverter · 24-hour efficiency log + CSV export"},
         {"key": "solis", "name": "Solis S6-EH3P 50 kW",   "accent": "#eab308",
          "blurb": "Hybrid inverter · live dashboard via microgrid"},
+        {"key": "monitor", "name": "Controlled loads",    "accent": "#22c55e",
+         "blurb": "Hot water, aircons and heater plugs at the Lodge and the lab, "
+                  "with battery SoC, demand, frequency and generator"},
     ]
     for s in systems:
         s["url"] = f"https://{s['key']}.smartenergylab.software/"
@@ -91,6 +97,10 @@ def create_app():
         # sent through auth_gate().
         if is_tools_host(request.host):
             return serve_tool(request.path.lstrip("/"))
+        # Controlled-loads admin page — served locally, login required
+        # (serve_monitor does its own gate; it isn't in UPSTREAMS).
+        if is_monitor_host(request.host):
+            return serve_monitor(request.path.lstrip("/"))
         # Proxied subdomain? enforce login, then forward to upstream.
         if is_proxied_host(request.host):
             gate = auth_gate()

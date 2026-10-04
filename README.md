@@ -9,6 +9,7 @@ auth gateway. Each monitored system is mirrored at its own subdomain:
 | `smartenergylab.software` | Login + system menu + forgot/reset | local Flask |
 | `fox.smartenergylab.software` | [fox_remote_monitoring](https://github.com/glenmo/fox_remote_monitoring) | desky.local (WireGuard 10.99.0.2) |
 | `solis.smartenergylab.software` | microgrid_remote_monitor | rubberduck.local (WireGuard 10.99.0.3) |
+| `monitor.smartenergylab.software` | Controlled loads admin page: hot water, aircons and heater plugs at the Lodge and the lab, battery SoC, demand, frequency, generator (login required, read-only) | local Flask (`monitor.py`), fetching public JSON from monitor.mooramoora.org.au on pignus |
 | `tools.smartenergylab.software` | Free public tools — PV string calculator, bifacial-capable (**no login**) | local Flask, static files |
 
 ```
@@ -327,6 +328,7 @@ sudo certbot certonly --webroot -w /var/www/html \
     -d smartenergylab.software \
     -d fox.smartenergylab.software \
     -d solis.smartenergylab.software \
+    -d monitor.smartenergylab.software \
     -d tools.smartenergylab.software \
     --agree-tos --no-eff-email -m you@example.com
 ```
@@ -355,6 +357,7 @@ Check:
 curl -sI https://smartenergylab.software/login            # 200
 curl -sI https://fox.smartenergylab.software/             # 302 → /login (proxied via burgan-portal)
 curl -sI https://solis.smartenergylab.software/           # 302 → /login
+curl -sI https://monitor.smartenergylab.software/         # 302 → /login
 curl -sI https://tools.smartenergylab.software/           # 200 (public — must NOT redirect to /login)
 
 # Confirm the cert actually names all four hosts — a wildcard DNS record

@@ -8,6 +8,7 @@ portal page and every mirrored inverter dashboard.
 
 import logging
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 from flask import (
     Blueprint, current_app, flash, redirect, render_template, request, url_for,
@@ -165,6 +166,22 @@ def _maybe_alert_on_burst(email: str):
             _emit_alert("ip", ip, count)
 
 
+def _safe_next(url: str) -> bool:
+    """A post-login redirect target we'll follow.
+
+    A local path, or an https URL on one of our own subdomains: the gated
+    subdomains send people here with an absolute ?next= so they land back
+    on the page they asked for. Anything else would be an open redirect.
+    """
+    if url.startswith("/") and not url.startswith("//"):
+        return True
+    parts = urlsplit(url)
+    domain = current_app.config.get("SESSION_COOKIE_DOMAIN", "").lstrip(".")
+    host = (parts.hostname or "").lower()
+    return (parts.scheme == "https" and bool(domain)
+            and (host == domain or host.endswith("." + domain)))
+
+
 # ---------------------------------------------------------------------------
 # Blueprint
 # ---------------------------------------------------------------------------
@@ -189,7 +206,7 @@ def login():
             db.session.commit()
             _record_login_event(email, success=True, user=user)
             next_url = request.args.get("next")
-            if next_url and next_url.startswith("/"):
+            if next_url and _safe_next(next_url):
                 return redirect(next_url)
             return redirect(url_for("portal.index"))
         # Generic error — don't leak whether the email exists.

@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Controlled loads · Smart Energy Lab{% endblock %}
+{% block brand_href %}{{ portal_url }}/{% endblock %}
+{% block nav %}
+    <span class="who">{{ current_user.email }}</span>
+    <a href="{{ portal_url }}/">Portal</a>
+{% endblock %}
+{% block content %}
+<div class="hero mon-hero">
+    <div>
+        <h1>Controlled loads</h1>
+        <p class="muted">Lodge and Smart Energy Lab · Wombat Hollow Microgrid</p>
+    </div>
+    <span id="updated" class="mon-updated">loading…</span>
+</div>
+
+<section class="mon-strip" aria-label="Microgrid">
+    <div class="card mon-stat" id="bat-solis"></div>
+    <div class="card mon-stat" id="bat-sppro"></div>
+    <div class="card mon-stat" id="mg-demand"></div>
+    <div class="card mon-stat" id="mg-freq"></div>
+    <div class="card mon-stat" id="mg-gen"></div>
+</section>
+
+<section aria-label="Lodge loads">
+    <h2 class="mon-h2">Lodge <span class="mon-h2-note" id="lodge-note"></span></h2>
+    <div class="mon-grid" id="loads-lodge"></div>
+</section>
+
+<section aria-label="Smart Energy Lab loads">
+    <h2 class="mon-h2">Smart Energy Lab</h2>
+    <div class="mon-grid" id="loads-sel"></div>
+</section>
+
+<p class="muted mon-foot">
+    <span id="total"></span>
+    Read-only. Data comes from the public microgrid monitor (monitor.mooramoora.org.au);
+    the page refreshes every 15 s. <span id="hw-reason"></span>
+</p>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+    ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const kW = (w) => (w === null || w === undefined) ? "—"
+    : (Math.abs(w) >= 1000 ? (w / 1000).toFixed(1) + " kW" : Math.round(w) + " W");
+  const pct = (v) => (v === null || v === undefined) ? "—" : Math.round(v) + "%";
+  const ago = (s) => (s === null || s === undefined) ? "" :
+    s < 90 ? s + " s ago" : s < 5400 ? Math.round(s / 60) + " min ago" : Math.round(s / 3600) + " h ago";
+
+  function socClass(v) {
+    if (v === null || v === undefined) return "";
+    return v >= 70 ? "good" : v >= 40 ? "warn" : "bad";
+  }
+
+  function battery(b) {
+    const flow = b.battery_w === null ? "—"
+      : b.battery_w > 50 ? "charging " + kW(b.battery_w)
+      : b.battery_w < -50 ? "discharging " + kW(-b.battery_w) : "idle";
+    const bus = b.to_bus_w === null ? "—"
+      : b.to_bus_w >= 0 ? kW(b.to_bus_w) + " to microgrid"
+      : kW(-b.to_bus_w) + " from microgrid";
+    const packs = b.packs.filter((p) => p !== null);
+    return `<div class="mon-label">${esc(b.name)}${b.online ? "" : ' <span class="tag bad">offline</span>'}</div>
+      <div class="mon-big ${socClass(b.soc)}">${pct(b.soc)}</div>
+      <div class="mon-meter"><span class="${socClass(b.soc)}" style="width:${Math.max(0, Math.min(100, b.soc || 0))}%"></span></div>
+      <div class="mon-sub">${esc(flow)}</div>
+      <div class="mon-sub">${esc(bus)}</div>
+      ${packs.length > 1 ? `<div class="mon-sub">packs ${packs.map(pct).join(" · ")}</div>` : ""}
+      ${b.age_s > 120 ? `<div class="mon-sub warn">polled ${ago(b.age_s)}</div>` : ""}`;
+  }
+
+  function stat(label, value, cls, subs) {
+    return `<div class="mon-label">${esc(label)}</div>
+      <div class="mon-big ${cls || ""}">${esc(value)}</div>
+      ${(subs || []).map((s) => `<div class="mon-sub">${esc(s)}</div>`).join("")}`;
+  }
+
+  const ICON = {hotwater: "♨", aircon: "❄", heater: "🔥"};
+  const LABEL = {heating: "Heating", cooling: "Cooling", boost: "Boost", on: "On",
+                 idle: "Idle", off: "Off", unavailable: "Unavailable", unknown: "No data",
+                 heat: "Heat", cool: "Cool", fan_only: "Fan", dry: "Dry", heat_cool: "Auto"};
+
+  function load(l) {
+    const active = ["heating", "cooling", "boost", "on"].includes(l.status);
+    const cls = l.status === "unavailable" || l.status === "unknown" ? "bad"
+      : active ? "on" : l.status === "idle" ? "idle" : "off";
+    const tags = [];
+    if (l.managed) tags.push('<span class="tag">surplus</span>');
+    if (l.stale && l.status !== "unknown") tags.push(`<span class="tag warn">stale ${ago(l.age_s)}</span>`);
+    return `<div class="card mon-load is-${cls}">
+      <div class="mon-load-head">
+        <span class="mon-icon" aria-hidden="true">${ICON[l.kind] || ""}</span>
+        <span class="mon-load-name">${esc(l.name)}</span>
+        <span class="mon-pill ${cls}">${esc(LABEL[l.status] || l.status)}</span>
+      </div>
+      <div class="mon-load-power">${l.power_w === null ? "—" : kW(l.power_w)}</div>
+      <div class="mon-sub">${l.detail.map(esc).join(" · ") || "&nbsp;"}</div>
+      ${tags.length ? `<div class="mon-tags">${tags.join(" ")}</div>` : ""}
+    </div>`;
+  }
+
+  function render(s) {
+    const byKey = Object.fromEntries(s.batteries.map((b) => [b.key, b]));
+    $("bat-solis").innerHTML = battery(byKey.solis);
+    $("bat-sppro").innerHTML = battery(byKey.sppro);
+
+    const m = s.microgrid;
+    $("mg-demand").innerHTML = stat("Microgrid demand", kW(m.consumption_w), "",
+      m.house_solar_w > 100 ? ["incl. " + kW(m.house_solar_w) + " house solar"] : []);
+    const f = m.frequency_hz;
+    $("mg-freq").innerHTML = stat("Frequency", f === null ? "—" : f.toFixed(2) + " Hz",
+      f === null ? "" : f > 50.2 ? "good" : f < 49.8 ? "warn" : "",
+      f === null ? [] : [f > 50.2 ? "solar surplus" : f < 49.8 ? "low" : "normal"]);
+    $("mg-gen").innerHTML = stat("Generator",
+      m.generator_running === null ? "—" : m.generator_running ? "Running" : "Off",
+      m.generator_running ? "bad" : m.generator_running === false ? "good" : "",
+      m.generator_running ? [kW(m.generator_w) + " into SP Pro"] : []);
+
+    $("loads-lodge").innerHTML = s.loads.filter((l) => l.site === "lodge").map(load).join("");
+    $("loads-sel").innerHTML = s.loads.filter((l) => l.site === "sel").map(load).join("");
+
+    const ls = s.lodge_surplus;
+    $("lodge-note").textContent = !ls ? "" :
+      "· surplus heating " + (ls.heating_enabled ? (ls.active ? "active" : "armed") : "disabled") +
+      (ls.setpoint ? ", " + ls.setpoint + " °C" : "");
+    $("total").textContent = "Controlled loads drawing " + kW(s.loads_total_w) + " in total.";
+    $("hw-reason").textContent = s.hotwater_decision ? "Hot water: " + s.hotwater_decision + "." : "";
+
+    const down = Object.entries(s.sources).filter(([, v]) => !v.ok).map(([k]) => k);
+    const u = $("updated");
+    u.textContent = "updated " + new Date(s.generated_at).toLocaleTimeString() +
+      (down.length ? " · unreachable: " + down.join(", ") : "");
+    u.classList.toggle("warn", down.length > 0);
+  }
+
+  async function tick() {
+    try {
+      const r = await fetch("api/state", {credentials: "same-origin", cache: "no-store"});
+      if (r.status === 401) { location.reload(); return; }
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      render(await r.json());
+    } catch (e) {
+      const u = $("updated");
+      u.textContent = "update failed (" + e.message + "), retrying";
+      u.classList.add("warn");
+    }
+  }
+  tick();
+  setInterval(tick, 15000);
+})();
+</script>
+{% endblock %}

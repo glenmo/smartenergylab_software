@@ -70,6 +70,19 @@ UPSTREAMS = {
 TOOLS_SUBDOMAIN = "tools"
 
 # ---------------------------------------------------------------------------
+# Controlled-loads admin page (monitor.py)
+# ---------------------------------------------------------------------------
+# <MONITOR_SUBDOMAIN>.smartenergylab.software shows every controlled load
+# at the Lodge and the lab plus the microgrid batteries. Login required.
+# Like TOOLS_SUBDOMAIN it is served locally, NOT through UPSTREAMS.
+MONITOR_SUBDOMAIN = "monitor"
+# Where burgan fetches the data from (public JSON on pignus).
+MONITOR_SOURCE_BASE = "https://monitor.mooramoora.org.au"
+# Optional: restrict the page to these portal users (emails). None or an
+# empty list lets any signed-in portal user see it.
+MONITOR_ALLOWED_EMAILS = None
+
+# ---------------------------------------------------------------------------
 # SMTP — Gmail with an app password
 # Create at: https://myaccount.google.com/apppasswords
 # ---------------------------------------------------------------------------
