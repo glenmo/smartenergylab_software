@@ -38,6 +38,83 @@
     the page refreshes every 15 s. <span id="hw-reason"></span>
 </p>
 
+<section class="card mon-howto" aria-label="How the loads are controlled">
+    <h2>How the controlled loads are operated</h2>
+    <p>
+        All the loads run off the Wombat Hollow Microgrid, so the aim is to use solar the batteries
+        can't store without ever running a load from the batteries or the generator. Two
+        controllers do the switching, in priority order: hot water first, then space heating at
+        the Lodge. When the batteries are full the SP Pro raises the microgrid frequency above
+        50 Hz to curtail solar, so a frequency above 50.2 Hz means solar is being wasted.
+    </p>
+
+    <h3>1. Hot water: Wharenui, then Lodge</h3>
+    <p>
+        Both tanks have my-PV AC&#8209;THOR 9s diverters (up to 9 kW each), driven over Modbus every
+        5 s by <code>acthor-surplus</code> on rubberduck.
+    </p>
+    <ul>
+        <li>Heating starts when the SP Pro is above 95&nbsp;% and charging at more than 5&nbsp;kW
+            (only the charge above 5&nbsp;kW is diverted), or when the frequency is above
+            50.2&nbsp;Hz. In that case heater power rises 1&nbsp;kW per 5&nbsp;s, holds down to
+            50.1&nbsp;Hz, and falls below that.</li>
+        <li>The Wharenui gets the surplus first. The Lodge gets what's left, and so does anything
+            a hot tank doesn't draw.</li>
+        <li>Power ramps up slowly and drops at once. It's cut straight away if the batteries
+            discharge more than 300&nbsp;W.</li>
+        <li>No heating while the generator runs, nor for 5 minutes after. No heating either when
+            the SP Pro data is more than 60&nbsp;s old, or when a diverter is unreachable or in
+            its blocking window.</li>
+        <li>Cloudy-day boost (Wharenui only): from 15:00 to 18:00, if the tank is below 60&nbsp;°C
+            and surplus gives less than 3&nbsp;kW, one element heats at about 3&nbsp;kW until
+            63&nbsp;°C. It never runs while the generator does.</li>
+    </ul>
+
+    <h3>2. Lodge heating: heater plugs and aircons</h3>
+    <p>
+        Run by Home Assistant at the Lodge (LodgyBox) from the same microgrid data.
+    </p>
+    <ul>
+        <li><strong>Surplus</strong> means both batteries above 95&nbsp;%, or the frequency above
+            50.2&nbsp;Hz. On top of that, the SP Pro must be at 70&nbsp;% or more and the
+            generator off, for 5 minutes in a row.</li>
+        <li>Nothing starts until both hot water tanks are satisfied (hot, at full power, or not
+            taking surplus).</li>
+        <li>Units are then added one at a time, at least 5 minutes apart, while the SP Pro is
+            still charging above 5&nbsp;kW or the frequency is above 50.2&nbsp;Hz. The order is
+            Upstairs heater, Office heater, Lounge aircon (heat), Dining Room aircon (heat).</li>
+        <li>When the surplus ends, the data goes stale, or the batteries discharge more than
+            300&nbsp;W for 2 minutes, units go off in reverse order, 5 minutes apart.</li>
+        <li>Surplus heating has a master switch and a switch for each room in Home Assistant, plus
+            a heating setpoint for the aircons (the heaters use their own thermostats). Turning a
+            switch off stops its units at once.</li>
+        <li>The automation only turns off units it turned on. If someone changes one of those
+            units by hand, the automation stops managing it.</li>
+        <li>The Caretaker's Flat aircon is never controlled by surplus and isn't shown here.</li>
+    </ul>
+
+    <h3>3. Smart Energy Lab aircons: Dacha and Studio</h3>
+    <p>
+        These are monitored only and are switched by hand (Daikin app or the hub dashboard).
+        They show <em>Heating</em> or <em>Cooling</em> while the compressor is actually running
+        and <em>Idle</em> while the unit is on but resting at its setpoint. Their power figure is
+        estimated from the unit's 0.1&nbsp;kWh energy counter, so it can lag by a minute or two.
+    </p>
+
+    <h3>Reading this page</h3>
+    <ul>
+        <li>A <span class="tag">surplus</span> tag means the unit is currently switched by one of the
+            controllers above.</li>
+        <li>A <span class="tag warn">stale</span> tag means the unit's data hasn't updated
+            recently. Its last known state is still shown.</li>
+        <li>Microgrid demand is the power both inverters put onto the microgrid (plus any house
+            solar export), worked out the same way as the
+            <a href="https://monitor.mooramoora.org.au/flow">power-flow diagram</a>.
+            A battery that's charging draws from the microgrid.</li>
+        <li>The generator counts as running when the SP Pro's AC input is 200&nbsp;W or more.</li>
+    </ul>
+</section>
+
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
